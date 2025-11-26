@@ -1,23 +1,24 @@
 import hashlib
 import csv
+import time # Added for timing optimization effect
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 # Assuming pydub is installed: pip install pydub
 from pydub import AudioSegment
 
-# --- Configuration Constants (As inferred from the documentation) ---
-L1_SPEED_FACTOR = 1.0  # Assumed default
-L2_SPEED_FACTOR = 1.25 # Example factor, should be a constant
-PAUSE_L1_MS = 500      # Pause after L1
-PAUSE_L2_MS = 1000     # Pause after L2 (between L2 repetitions)
-MIN_FILE_SIZE_BYTES = 1000 # Minimum size for validation check
-DURATION_TOLERANCE = 0.05  # 5% tolerance for duration validation
+# --- Configuration Constants ---
+L1_SPEED_FACTOR = 1.0  
+L2_SPEED_FACTOR = 1.25 
+PAUSE_L1_MS = 500      
+PAUSE_L2_MS = 1000     
+MIN_FILE_SIZE_BYTES = 1000 
+DURATION_TOLERANCE = 0.05  
 
 class LanguageLearnerWorkflow:
     """
-    Implements the V0.007 Language Learner Workflow, focusing on
-    TTS/caching, audio processing, and metric validation.
+    Implements the V0.008 Language Learner Workflow, introducing
+    Day-Level Output Caching for performance optimization.
     """
 
     def __init__(self, base_dir: str = "."):
@@ -41,9 +42,7 @@ class LanguageLearnerWorkflow:
 
     def _get_or_generate_audio(self, item_id: int, text: str, language: str) -> AudioSegment:
         """
-        2.2. Implement robust caching and TTS simulation.
-        CRITICAL: Key generation uses hashlib.sha256(text + language).
-        CRITICAL: Cache path uses pathlib: self.base_dir / "cache" / f"{key}.mp3".
+        2.2. Implement robust caching and TTS simulation (Item-Level Caching).
         """
         # 1. Generate Key & Path
         combined_string = text + language
@@ -52,20 +51,16 @@ class LanguageLearnerWorkflow:
 
         # 2. Check Cache (Hit)
         if cache_path.exists():
-            # print(f"Cache HIT for {item_id}: {key[:6]}...")
             try:
+                # print(f"Item Cache HIT: {key[:6]}...")
                 return AudioSegment.from_file(cache_path, format="mp3")
             except Exception as e:
                 print(f"Error loading cached file {cache_path}: {e}. Regenerating.")
-                cache_path.unlink(missing_ok=True) # Delete corrupted file
+                cache_path.unlink(missing_ok=True) 
 
         # 3. Check Cache (Miss) & Simulate TTS
-        # Simulate the TTS API call: duration = 500ms + 50ms per character.
-        # This duration is used to create a silent AudioSegment placeholder.
         duration_ms = 500 + len(text) * 50
-        # print(f"Cache MISS for {item_id}. Generating silent audio of {duration_ms}ms.")
-        
-        # AudioSegment.silent creates a silent segment
+        # print(f"Item Cache MISS. Generating audio of {duration_ms}ms.")
         audio_segment = AudioSegment.silent(duration=duration_ms, frame_rate=22050)
         
         # 4. Cache & Return
@@ -74,27 +69,58 @@ class LanguageLearnerWorkflow:
             return audio_segment
         except Exception as e:
             print(f"ERROR: Could not save generated audio to cache path {cache_path}: {e}")
-            return AudioSegment.silent(duration=1000) # Return a safe 1s segment on failure
+            return AudioSegment.silent(duration=1000) 
 
     def _adjust_speed(self, audio: AudioSegment, speed_factor: float) -> AudioSegment:
         """2.3. Adjusts the playback speed of an AudioSegment."""
-        # Speed Check
         if speed_factor == 1.0:
             return audio
 
-        # Apply Speed
-        # Use pydub to adjust the frame rate for speed manipulation
         target_frame_rate = int(audio.frame_rate * speed_factor)
         return audio.set_frame_rate(target_frame_rate)
+    
+    def _check_day_cache_hit(self, day_number: int) -> bool:
+        """
+        NEW V0.008 IMPLEMENTATION: Checks if all final output files for a day exist.
+        """
+        day_output_dir = self.base_dir / "output" / f"day_{day_number}"
+        
+        # List of required final output files
+        required_files = [
+            day_output_dir / "track_A.mp3",
+            day_output_dir / "track_B.mp3",
+            day_output_dir / "track_C.mp3",
+            day_output_dir / "schedule.csv",
+        ]
+        
+        # Check if directory exists and all required files exist within it
+        if day_output_dir.exists() and all(f.exists() for f in required_files):
+            return True
+        return False
+    
+    def _load_expected_metrics_from_csv(self, day_number: int) -> Optional[Dict[str, float]]:
+        """
+        Helper to load expected metrics (calculated during creation) if a day is skipped.
+        In a real system, these metrics would be saved alongside the files. 
+        For this simulation, we'll force recalculation or return a placeholder if we skip the creation step. 
+        Since the V0.007 doc didn't include saving metrics, we must trust the re-calculation 
+        or rely on the Day-Level check implicitly. For simplicity in this simulation, 
+        we will require the metrics to be CALCULATED if validation is run.
+        """
+        # In this V0.008 simulation, a true cache hit for metrics is not possible 
+        # without further doc changes. The Day-Cache Hit only skips the creation/export.
+        # We'll allow the orchestration to handle the calculation logic.
+        return None # Metrics must be calculated if validation runs.
 
     def _create_and_save_day_files(self, day_number: int, day_items: List[Dict[str, Any]]) -> Dict[str, float]:
         """
         2.4. Processes items for one day, concatenates audio, and calculates metrics.
-        Returns pre-calculated expected_metrics.
+        (Called only on a Day Cache MISS)
         """
-        print(f"\nProcessing Day {day_number} with {len(day_items)} items...")
+        print(f"\nProcessing Day {day_number} - Starting File Generation (Cache MISS)...")
+        start_time = time.time() # Start timing generation
 
-        # Initialize Metrics
+        # Initialize Metrics and Audio Tracks... (The rest of the logic remains V0.007 compliant)
         running_time_ms = 0.0
         expected_metrics = {
             "track_a_duration_ms": 0.0,
@@ -104,7 +130,6 @@ class LanguageLearnerWorkflow:
         }
         schedule_rows = []
         
-        # Initialize master tracks (using a simple 1ms silent segment to start)
         empty_audio = AudioSegment.silent(duration=1) 
         track_a = empty_audio
         track_b = empty_audio
@@ -119,21 +144,18 @@ class LanguageLearnerWorkflow:
             l1_text = item["l1_text"]
             l2_text = item["l2_text"]
 
-            # Get Audio (L1: native, L2: target)
+            # Get Audio (This uses the fast Item-Level Cache)
             audio_l1 = self._get_or_generate_audio(item_id, l1_text, "L1")
             audio_l2 = self._get_or_generate_audio(item_id, l2_text, "L2")
             
             # Adjust Speed
-            # L1 uses L1_SPEED_FACTOR (usually 1.0)
             adjusted_l1 = self._adjust_speed(audio_l1, L1_SPEED_FACTOR) 
-            # L2 uses L2_SPEED_FACTOR
             adjusted_l2 = self._adjust_speed(audio_l2, L2_SPEED_FACTOR)
 
-            # Calculate Durations (Theoretical Adjusted Durations)
+            # Calculate Durations
             dur_adj_l1 = len(adjusted_l1)
             dur_adj_l2 = len(adjusted_l2)
             
-            # Theoretical total expected duration for this item
             item_duration_A = dur_adj_l1 + PAUSE_L1_MS + dur_adj_l2
             item_duration_B = item_duration_A + PAUSE_L2_MS + dur_adj_l2
             item_duration_C = dur_adj_l2 + PAUSE_L2_MS + dur_adj_l2
@@ -144,16 +166,11 @@ class LanguageLearnerWorkflow:
             expected_metrics["track_c_duration_ms"] += item_duration_C
 
             # Concatenate Audio
-            # Track A: L1 + Pause_L1 + L2
             track_a += adjusted_l1 + pause_l1 + adjusted_l2
-            
-            # Track B: L1 + Pause_L1 + L2 + Pause_L2 + L2
             track_b += adjusted_l1 + pause_l1 + adjusted_l2 + pause_l2 + adjusted_l2
-
-            # Track C: L2 + Pause_L2 + L2 (Repetition/Review track)
             track_c += adjusted_l2 + pause_l2 + adjusted_l2
 
-            # Update Schedule CSV (based on Track A's duration)
+            # Update Schedule CSV
             schedule_row = {
                 "item_id": item_id,
                 "l1_text": l1_text,
@@ -162,13 +179,12 @@ class LanguageLearnerWorkflow:
                 "end_time_ms": int(running_time_ms + item_duration_A)
             }
             schedule_rows.append(schedule_row)
-            running_time_ms += item_duration_A + PAUSE_L2_MS # Day's total running time metric
+            running_time_ms += item_duration_A + PAUSE_L2_MS
 
         # Save Files
         day_output_dir = self.base_dir / "output" / f"day_{day_number}"
         day_output_dir.mkdir(exist_ok=True)
         
-        # Save Audio Files
         print(f"Exporting audio files for Day {day_number}...")
         track_a.export(day_output_dir / "track_A.mp3", format="mp3")
         track_b.export(day_output_dir / "track_B.mp3", format="mp3")
@@ -182,18 +198,18 @@ class LanguageLearnerWorkflow:
                 writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
                 writer.writeheader()
                 writer.writerows(schedule_rows)
-            print(f"Saved schedule to {csv_path}")
         
-        # Success
-        print(f"Day {day_number} expected metrics calculated.")
+        end_time = time.time()
+        print(f"Day {day_number} generation completed in {(end_time - start_time):.2f} seconds.")
         return expected_metrics
 
     def _validate_day_files(self, day_number: int, expected_metrics: Dict[str, float]) -> bool:
         """
         2.5. Validates file integrity against pre-calculated metrics.
-        Focuses on row count and duration against an independent metric.
         """
         print(f"\nValidating files for Day {day_number}...")
+        
+        # ... (Validation logic remains V0.007 compliant)
         day_output_dir = self.base_dir / "output" / f"day_{day_number}"
         
         # Validate CSV
@@ -212,7 +228,6 @@ class LanguageLearnerWorkflow:
         if actual_row_count != expected_row_count:
             print(f"Validation FAILED: Row count mismatch. Expected: {expected_row_count}, Actual: {actual_row_count}")
             return False
-        print("CSV row count validated successfully.")
 
         mp3_files = {
             "track_A": day_output_dir / "track_A.mp3",
@@ -224,7 +239,7 @@ class LanguageLearnerWorkflow:
         for track_name, mp3_path in mp3_files.items():
             expected_duration_ms = expected_metrics[f"{track_name.lower()}_duration_ms"]
 
-            # Check File Size (Sufficient Size Check)
+            # Check File Size
             if not mp3_path.exists():
                 print(f"Validation FAILED for {track_name}: File not found.")
                 return False
@@ -249,8 +264,6 @@ class LanguageLearnerWorkflow:
                 print(f"Validation FAILED for {track_name}: Duration deviation too high ({deviation:.2%}).")
                 print(f"Expected: {expected_duration_ms:.0f}ms, Actual: {actual_duration_ms:.0f}ms")
                 return False
-            
-            print(f"{track_name} duration validated. Deviation: {deviation:.2%}")
 
         # Success
         print(f"Day {day_number} validation SUCCEEDED.")
@@ -259,11 +272,11 @@ class LanguageLearnerWorkflow:
     # --- 1. High-Level Application Flow ---
     
     def run_orchestration(self):
-        """1. Orchestrates the entire language learning file generation process."""
-        print("--- Starting V0.007 Language Learner Orchestration ---")
+        """
+        1. Orchestrates the entire process, including the new V0.008 Day-Level Cache Check.
+        """
+        print("--- Starting V0.008 Language Learner Orchestration ---")
 
-        # 2. Generate SRS Schedule (Placeholder)
-        # Simple placeholder to split 100 items into 4 days
         total_items = len(self.data_source)
         items_per_day = 25
         num_days = (total_items + items_per_day - 1) // items_per_day
@@ -275,24 +288,63 @@ class LanguageLearnerWorkflow:
             
             if not day_items:
                 break
+            
+            # --- 3. Check Day Cache ---
+            if self._check_day_cache_hit(day_number):
+                # --- 4. Cache HIT ---
+                print(f"\nDay {day_number} output files found. Skipping generation (Day Cache HIT).")
+                
+                # IMPORTANT: Since we skipped generation, we must re-run the metric calculation 
+                # (which is fast) to get expected_metrics for validation (Step 6).
+                # This prevents a validation failure.
+                print("Recalculating expected metrics for validation...")
+                # The logic below performs the calculation without creating the large audio objects.
+                # It's an internal optimization for V0.008's Day-Cache HIT path.
+                
+                expected_metrics = {
+                    "track_a_duration_ms": 0.0,
+                    "track_b_duration_ms": 0.0,
+                    "track_c_duration_ms": 0.0,
+                    "csv_row_count": float(len(day_items))
+                }
+                
+                for item in day_items:
+                    # Look up the cached audio duration for L1 and L2 (Item Cache HITs guaranteed)
+                    audio_l1 = self._get_or_generate_audio(item["item_id"], item["l1_text"], "L1")
+                    audio_l2 = self._get_or_generate_audio(item["item_id"], item["l2_text"], "L2")
+                    
+                    adjusted_l1 = self._adjust_speed(audio_l1, L1_SPEED_FACTOR) 
+                    adjusted_l2 = self._adjust_speed(audio_l2, L2_SPEED_FACTOR)
 
-            # 3. LOOP for Each Day: Create and Save
-            expected_metrics = self._create_and_save_day_files(day_number, day_items)
+                    dur_adj_l1 = len(adjusted_l1)
+                    dur_adj_l2 = len(adjusted_l2)
+                    
+                    item_duration_A = dur_adj_l1 + PAUSE_L1_MS + dur_adj_l2
+                    item_duration_B = item_duration_A + PAUSE_L2_MS + dur_adj_l2
+                    item_duration_C = dur_adj_l2 + PAUSE_L2_MS + dur_adj_l2
 
-            # 4. Validate Files
+                    expected_metrics["track_a_duration_ms"] += item_duration_A
+                    expected_metrics["track_b_duration_ms"] += item_duration_B
+                    expected_metrics["track_c_duration_ms"] += item_duration_C
+                
+            else:
+                # --- 5. Cache MISS (Full generation required) ---
+                expected_metrics = self._create_and_save_day_files(day_number, day_items)
+
+            # --- 6. Validate Files ---
             validation_success = self._validate_day_files(day_number, expected_metrics)
             
-            # 5. Halt or Continue
+            # --- 7. Halt or Continue ---
             if not validation_success:
                 print("\n\n!!! PROCESS HALTED DUE TO INTEGRITY FAILURE !!!")
                 return
 
-        print("\n--- Orchestration Complete. All days validated successfully. ---")
+        print("\n--- V0.008 Orchestration Complete. All days processed and validated. ---")
 
 
 if __name__ == "__main__":
     # Example usage:
-    # This will create a 'cache' directory and an 'output' directory in the current
-    # working directory, and run the simulation for 4 days.
+    # First run (Scenario 1) will create files and populate cache.
+    # Second run (Scenario 2) will trigger the fast Day Cache HIT logic.
     workflow = LanguageLearnerWorkflow()
     workflow.run_orchestration()
