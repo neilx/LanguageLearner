@@ -1,242 +1,283 @@
-import os
 import pandas as pd
+import numpy as np
+from pathlib import Path
+import csv
 import random
+import os
 import hashlib
-from typing import List, Dict, Any, Union
+from typing import List, Dict, Any
 
-# --- 1. CONSTANTS (As per V0.020 Documentation) ---
-WORKFLOW_VERSION = 'v0.020'
-REVIEW_RATIO = 5
-INITIAL_BASE_DIR = 'output'
-CACHE_FOLDER_NAME = 'cache'
-EXPECTED_FILE_COUNT = 4 # CSV + 3 MP3s = 4
+# --- External Audio Libraries ---
+try:
+    from gtts import gTTS
+    from pydub import AudioSegment
+    # NOTE: The problematic 'SilenceSegment' import has been removed.
+except ImportError:
+    print("Error: Required libraries (gTTS, pydub) not found.")
+    print("Please ensure you installed them in your Thonny environment.")
+    exit()
+
+# --- CRITICAL: FFmpeg Path Configuration ---
+# You confirmed FFmpeg is installed. If the script fails, double-check this path.
+# REPLACE this example path with the actual location of your ffmpeg/bin folder
+try:
+    os.environ["PATH"] += os.pathsep + r'C:\Program Files\ffmpeg\bin' 
+except:
+    pass
+
+# --- 4. Constants (for Python Script) ---
+WORKFLOW_VERSION = 'v0.023'
+REVIEW_RATIO = 5  # New Items to Review Items (5:1)
+EXPECTED_FILE_COUNT = 4  # 1 CSV + 3 MP3s
 L2_SPEED_FACTOR = 1.4
 PAUSE_L1_MS = 500
 PAUSE_L2_MS = 1000
-DURATION_TOLERANCE = 0.05
-CSV_DTYPE_MAP = {'study_day': str, 'item_id': 'int64'} 
-CSV_FILENAME = 'schedule.csv'
-MP3_FILENAMES = ['workflow.mp3', 'review.mp3', 'reverse.mp3']
-ALL_FILENAMES = MP3_FILENAMES + [CSV_FILENAME]
+PAUSE_SHADOW_MS = 2500 # Extra long pause for review shadowing
 
-# --- 2. DUMMY DATA SETUP ---
-DAY_ITEM_DISTRIBUTION = {
-    1: 10,
-    2: 20,
-    3: 30,
-    4: 40
-}
-DUMMY_TOTAL_ITEMS = sum(DAY_ITEM_DISTRIBUTION.values())
-SCHEMA_COLUMNS = ['item_id', 'w2', 'w1', 'l1_text', 'l2_text', 'study_day']
+# --- Configuration (NFR-6 IMMUTABLE NAMES) ---
+MASTER_DATA_FILE = Path('sentence_pairs.csv')
+OUTPUT_DIR = Path('output') 
+CACHE_DIR = Path('cache')   
 
-# --- 3. Core Logic Simulation Functions (Simulated audio class remains the same) ---
+# Ensure directories exist
+OUTPUT_DIR.mkdir(exist_ok=True)
+CACHE_DIR.mkdir(exist_ok=True) 
 
-class AudioSegment:
-    def __init__(self, duration_ms: int):
-        self.duration_ms = duration_ms
-    def speedup(self, factor: float) -> 'AudioSegment':
-        new_duration = int(self.duration_ms / factor)
-        return AudioSegment(new_duration)
-    def export(self, file_path: str):
-        with open(file_path, 'w') as f:
-            f.write(f"Simulated audio content, duration: {self.duration_ms}ms")
-    @staticmethod
-    def empty(duration_ms: int) -> 'AudioSegment':
-        return AudioSegment(duration_ms)
-    def __add__(self, other: 'AudioSegment') -> 'AudioSegment':
-        return AudioSegment(self.duration_ms + other.duration_ms)
+# Define the order of columns (as per 2.1)
+SCHEDULE_COLUMNS = [
+    'item_id', 'w2', 'w1', 'l1_text', 'l2_text', 'study_day'
+]
+# Expected output files (excluding the schedule.csv)
+EXPECTED_FILES = [
+    'workflow.mp3', 'review.mp3', 'reverse.mp3', 'schedule.csv'
+]
 
-def _get_or_generate_audio(item_id: int, text: str, language: str) -> AudioSegment:
-    cache_key = hashlib.sha256(f"{text}-{language}".encode()).hexdigest()
-    cache_path = os.path.join(CACHE_FOLDER_NAME, cache_key)
-    if os.path.exists(cache_path):
-        return AudioSegment(duration_ms=5000)
-    else:
-        os.makedirs(CACHE_FOLDER_NAME, exist_ok=True)
-        base_duration = 1000 + len(text) * 50
-        segment = AudioSegment(base_duration)
-        segment.export(cache_path)
+# --- Cache and Audio Utility Functions ---
+
+def _get_cached_audio_path(text: str) -> Path:
+    """NFR-5: Generates a unique filename (MD5 hash) for the text content."""
+    hash_object = hashlib.md5(text.strip().lower().encode('utf-8'))
+    filename = f"{hash_object.hexdigest()}.mp3"
+    return CACHE_DIR / filename
+
+def _apply_speed_change(segment: AudioSegment, speed: float) -> AudioSegment:
+    """Adjusts the playback speed of an AudioSegment by changing the frame rate."""
+    if speed == 1.0:
         return segment
+    return segment.set_frame_rate(int(segment.frame_rate * speed))
 
-def _generate_dummy_master_data(file_path: str) -> pd.DataFrame:
-    data = []
-    item_id = 1
-    dummy_danish_words = ['Hund', 'Kat', 'Hus', 'Båd', 'Vand', 'Lys']
-    dummy_english_words = ['Dog', 'Cat', 'House', 'Boat', 'Water', 'Light']
-
-    for day, count in DAY_ITEM_DISTRIBUTION.items():
-        for _ in range(count):
-            w2_word = random.choice(dummy_danish_words)
-            w1_word = random.choice(dummy_english_words)
-
-            data.append({
-                'item_id': item_id,
-                'w2': w2_word,
-                'w1': w1_word,
-                'l1_text': f"The quick {w1_word} jumps over the lazy dog {item_id}.",
-                'l2_text': f"Den hurtige {w2_word} hopper over den dovne hund {item_id}.",
-                'study_day': day
-            })
-            item_id += 1
+def _tts_generate_and_cache(text: str, lang: str, is_l2: bool) -> AudioSegment:
+    """Generates TTS audio, uses the cache if available, and applies speed factor."""
+    cache_path = _get_cached_audio_path(text)
     
-    df = pd.DataFrame(data)
-    df = df[SCHEMA_COLUMNS] 
-    df['study_day'] = df['study_day'].astype(int)
-    df.to_csv(file_path, index=False)
-    print(f"Generated dummy data: {DUMMY_TOTAL_ITEMS} items saved to {file_path}")
-    return df
-
-def _calculate_integrity_metric(actual_duration: int, expected_duration: int) -> float:
-    if expected_duration == 0:
-        return 0.0
-    return abs(actual_duration - expected_duration) / expected_duration
-
-# --- 4. V0.020 Fixed Logic (Declarative Day Selection) ---
-
-def _get_all_past_items(current_day: int) -> List[Dict[str, Any]]:
-    """Retrieves items from schedule.csv of previous days."""
-    past_items = []
-    
-    for day in range(1, current_day):
-        schedule_path = os.path.join(INITIAL_BASE_DIR, f'day_{day}', CSV_FILENAME) 
-        if os.path.exists(schedule_path):
-            df = pd.read_csv(schedule_path, dtype=CSV_DTYPE_MAP) 
-            past_items.extend(df.to_dict('records'))
-    return past_items
-
-def _generate_review_schedule(new_items: List[Dict[str, Any]], review_items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Interleaves new and review items (5:1 ratio)."""
-    final_schedule = []
-    num_new = len(new_items)
-    num_review_required = num_new // REVIEW_RATIO
-    
-    if len(review_items) > num_review_required:
-        selected_review_items = random.sample(review_items, num_review_required)
+    if cache_path.is_file():
+        audio_segment = AudioSegment.from_mp3(cache_path)
     else:
-        selected_review_items = review_items
-
-    new_idx = 0
-    review_idx = 0
-    while new_idx < num_new or review_idx < len(selected_review_items):
-        for _ in range(REVIEW_RATIO):
-            if new_idx < num_new:
-                final_schedule.append(new_items[new_idx])
-                new_idx += 1
+        print(f"    - Cache miss for {lang} text (hash: {cache_path.name[:8]}...). Synthesizing and caching.")
         
-        if review_idx < len(selected_review_items):
-            final_schedule.append(selected_review_items[review_idx])
-            review_idx += 1
+        temp_file_path = CACHE_DIR / f'temp_{cache_path.name}'
+        
+        tts = gTTS(text=text, lang=lang, slow=False)
+        tts.save(temp_file_path)
+        
+        audio_segment = AudioSegment.from_mp3(temp_file_path)
+        
+        if is_l2:
+            audio_segment = _apply_speed_change(audio_segment, L2_SPEED_FACTOR)
+
+        audio_segment.export(cache_path, format="mp3")
+        
+        os.remove(temp_file_path)
+
+    return audio_segment
+
+# --- Workflow Functions ---
+
+def _load_or_generate_master_data(df: pd.DataFrame) -> pd.DataFrame:
+    """1. Load/Generate Master Data."""
+    print(f"Loading master data from {MASTER_DATA_FILE}...")
+    
+    if MASTER_DATA_FILE.exists():
+        master_df = pd.read_csv(MASTER_DATA_FILE)
+    else:
+        print("Master data file not found. Generating dummy data for simulation.")
+        data = {
+            'item_id': list(range(1, 61)),
+            'w2': [f'danish_word_{i}' for i in range(1, 61)],
+            'w1': [f'english_word_{i}' for i in range(1, 61)],
+            'l1_text': [f'This is the English sentence containing english_word_{i}.' for i in range(1, 61)],
+            'l2_text': [f'Dette er den danske sætning, der indeholder danish_word_{i}.' for i in range(1, 61)],
+            'study_day': (np.arange(60) // 10) + 1 
+        }
+        master_df = pd.DataFrame(data, columns=SCHEDULE_COLUMNS)
+        master_df.to_csv(MASTER_DATA_FILE, index=False)
+
+    master_df['study_day'] = master_df['study_day'].astype(int)
+    print(f"Master data loaded with {len(master_df)} items.")
+    return master_df
+
+def _generate_srs_schedule(master_df: pd.DataFrame) -> Dict[int, pd.DataFrame]:
+    """2. Generate SRS Schedule."""
+    print("Generating SRS schedule by study_day...")
+    schedule_by_day = master_df.groupby('study_day')
+    return {day: df for day, df in schedule_by_day}
+
+def _determine_days_to_process(max_day: int) -> List[int]:
+    """3. Determine Days to Process (Declarative Filter)."""
+    print("Determining incomplete days using declarative file check...")
+    days_to_process = []
+    
+    for day in range(1, max_day + 1):
+        day_folder = OUTPUT_DIR / f'day_{day}'
+        
+        if not day_folder.is_dir():
+            days_to_process.append(day)
+            continue
+
+        missing_expected_file = False
+        for expected_file in EXPECTED_FILES:
+            if not (day_folder / expected_file).is_file():
+                missing_expected_file = True
+                break
+
+        if missing_expected_file:
+            days_to_process.append(day)
             
-    return final_schedule
+    print(f"Days identified for processing: {days_to_process}")
+    return days_to_process
 
-def _get_processed_days(all_days_int: List[int]) -> List[int]:
-    """DECLARATIVE FILTER: Returns a list of day numbers that are ALREADY COMPLETE."""
+def _get_all_past_items(processed_days: List[int]) -> pd.DataFrame:
+    """Retrieves all items from schedule.csv files for completely processed days."""
+    all_past_items = []
     
-    # Check if the base output directory exists
-    if not os.path.exists(INITIAL_BASE_DIR):
-        return []
-
-    # Use a list comprehension (the declarative filter) to check the state of each day
-    processed_days = [
-        day for day in all_days_int
-        if os.path.exists(os.path.join(INITIAL_BASE_DIR, f'day_{day}')) and 
-           len(os.listdir(os.path.join(INITIAL_BASE_DIR, f'day_{day}'))) == EXPECTED_FILE_COUNT
-    ]
+    for day in processed_days:
+        schedule_path = OUTPUT_DIR / f'day_{day}' / 'schedule.csv'
+        if schedule_path.is_file():
+            try:
+                df = pd.read_csv(schedule_path)
+                all_past_items.append(df)
+            except pd.errors.EmptyDataError:
+                pass
     
-    return processed_days
-
-
-# --- 5. Main Processing Function ---
-
-def _create_and_save_day_files(day_number: int, day_items: List[Dict[str, Any]]):
-    """Core function to process one day."""
-    print(f"\n--- Processing Day {day_number} ({len(day_items)} new items) ---")
-    day_folder = os.path.join(INITIAL_BASE_DIR, f'day_{day_number}')
-    os.makedirs(day_folder, exist_ok=True)
-    
-    past_items = _get_all_past_items(day_number)
-    final_schedule = _generate_review_schedule(day_items, past_items)
-    
-    if not final_schedule:
-        print(f"Day {day_number}: No items to process.")
-        return
-
-    # Audio generation logic (unchanged)
-    total_workflow_audio = AudioSegment.empty(0)
-    total_review_audio = AudioSegment.empty(0)
-    total_reverse_audio = AudioSegment.empty(0)
-    
-    for item in final_schedule:
-        l1_seg = _get_or_generate_audio(item['item_id'], item['l1_text'], 'L1')
-        l2_seg = _get_or_generate_audio(item['item_id'], item['l2_text'], 'L2').speedup(L2_SPEED_FACTOR)
-
-        workflow_seg = l1_seg + AudioSegment.empty(PAUSE_L1_MS) + l2_seg + AudioSegment.empty(PAUSE_L2_MS)
-        total_workflow_audio += workflow_seg
-        
-        total_review_audio += (l2_seg + AudioSegment.empty(PAUSE_L2_MS))
-        
-        reverse_seg = l2_seg + AudioSegment.empty(PAUSE_L2_MS) + l1_seg + AudioSegment.empty(PAUSE_L1_MS)
-        total_reverse_audio += reverse_seg
-
-    # Save Files 
-    schedule_path = os.path.join(day_folder, CSV_FILENAME)
-    df_schedule = pd.DataFrame(final_schedule)
-    df_schedule = df_schedule[SCHEMA_COLUMNS] 
-    df_schedule.to_csv(schedule_path, index=False)
-    
-    total_workflow_audio.export(os.path.join(day_folder, MP3_FILENAMES[0])) 
-    total_review_audio.export(os.path.join(day_folder, MP3_FILENAMES[1])) 
-    total_reverse_audio.export(os.path.join(day_folder, MP3_FILENAMES[2])) 
-    
-    print(f"Day {day_number}: Saved {len(final_schedule)} items and 3 MP3 files.")
-    
-    # Validation
-    expected_rows = len(final_schedule)
-    actual_rows = len(pd.read_csv(schedule_path, dtype=CSV_DTYPE_MAP)) 
-    deviation = _calculate_integrity_metric(total_workflow_audio.duration_ms, total_workflow_audio.duration_ms) 
-    
-    if actual_rows == expected_rows and deviation <= DURATION_TOLERANCE:
-        print(f"Day {day_number}: Validation SUCCESS (Rows: {actual_rows}, Deviation: {deviation:.4f})")
+    if all_past_items:
+        return pd.concat(all_past_items, ignore_index=True)
     else:
-        print(f"Day {day_number}: Validation FAILED (Rows: {actual_rows} vs {expected_rows})")
+        return pd.DataFrame(columns=SCHEDULE_COLUMNS)
 
-# --- 6. Orchestration (Main Function) ---
+def _generate_daily_mp3s(day_df: pd.DataFrame, day: int) -> None:
+    """Generates and saves the three required MP3 files for the day."""
+    day_folder = OUTPUT_DIR / f'day_{day}'
+    print(f"  > Generating final MP3 outputs for Day {day}...")
+    
+    # Corrected silence creation using AudioSegment.silent()
+    pause_l1 = AudioSegment.silent(duration=PAUSE_L1_MS) 
+    pause_l2 = AudioSegment.silent(duration=PAUSE_L2_MS) 
+    pause_shadow = AudioSegment.silent(duration=PAUSE_SHADOW_MS)
 
-def run_workflow():
-    """High-Level Application Flow (Section 1) - FIXED V0.020."""
-    master_path = 'sentence_pairs.csv'
+    workflow_audio = AudioSegment.empty()
+    review_audio = AudioSegment.empty()
+    reverse_audio = AudioSegment.empty()
+
+    for _, row in day_df.iterrows():
+        # 1. Get/Cache Audio Segments
+        l1_segment = _tts_generate_and_cache(row['l1_text'], 'en', is_l2=False)
+        l2_segment = _tts_generate_and_cache(row['l2_text'], 'da', is_l2=True)
+
+        # 2. Build the three distinct audio tracks
+        workflow_audio += l1_segment + pause_l1 + l2_segment + pause_l2
+        review_audio += l2_segment + pause_shadow
+        reverse_audio += l2_segment + pause_l2 + l1_segment + pause_l2
+
+    # 3. Export the final combined tracks
+    workflow_audio.export(day_folder / 'workflow.mp3', format='mp3')
+    review_audio.export(day_folder / 'review.mp3', format='mp3')
+    reverse_audio.export(day_folder / 'reverse.mp3', format='mp3')
+    
+    print(f"  ✅ Successfully generated 3 MP3 files in {day_folder.name}/")
+
+
+def _process_day(
+    day: int, 
+    new_items_df: pd.DataFrame, 
+    processed_days: List[int]
+) -> None:
+    """4. Process Missing Days: Performs core processing for one incomplete day."""
+    day_folder = OUTPUT_DIR / f'day_{day}'
+    day_folder.mkdir(exist_ok=True) 
+
+    print(f"\n--- ⏳ Processing Day {day} (v{WORKFLOW_VERSION}) ---")
+    
+    # 1. Select New Items and Review Items
+    new_count = len(new_items_df)
+    review_count = new_count // REVIEW_RATIO
+    past_items_df = _get_all_past_items(processed_days)
+    
+    if len(past_items_df) > 0 and review_count > 0:
+        review_items_df = past_items_df.sample(n=min(review_count, len(past_items_df)))
+    else:
+        review_items_df = pd.DataFrame(columns=SCHEDULE_COLUMNS)
+
+    print(f"  > New: {new_count} items. Review: {len(review_items_df)} items.")
+
+    # 2. Combine and Interleave (Shuffle)
+    daily_schedule_df = pd.concat([new_items_df, review_items_df], ignore_index=True)
+    daily_schedule_df = daily_schedule_df.sample(frac=1).reset_index(drop=True)
+    
+    # 3. Generate schedule.csv
+    schedule_path = day_folder / 'schedule.csv'
+    daily_schedule_df.to_csv(schedule_path, index=False, columns=SCHEDULE_COLUMNS)
+    print(f"  > Saved daily schedule (Total items: {len(daily_schedule_df)}) to {schedule_path.name}")
+    
+    # 4. Generate MP3s (using the full audio implementation)
+    _generate_daily_mp3s(daily_schedule_df, day)
+    
+    # 5. Validation
+    current_file_count = len([f for f in day_folder.iterdir() if f.is_file() and not f.name.startswith('.')])
+    if current_file_count == EXPECTED_FILE_COUNT:
+        print(f"  ✅ Day {day} processing **SUCCESS**. All {EXPECTED_FILE_COUNT} outputs found.")
+    else:
+        print(f"  ❌ Day {day} processing **FAILED**. Found {current_file_count}/{EXPECTED_FILE_COUNT} files.")
+
+
+# --- Main Execution ---
+
+def run_workflow() -> None:
+    """Orchestrates the four-step application flow."""
+    print(f"## Language Learner Workflow v{WORKFLOW_VERSION} ##")
     
     # 1. Load/Generate Master Data
-    if not os.path.exists(master_path):
-        master_df = _generate_dummy_master_data(master_path)
-    else:
-        master_df = pd.read_csv(master_path, dtype=CSV_DTYPE_MAP) 
+    master_df = _load_or_generate_master_data(pd.DataFrame())
 
-    # 2. Generate SRS Schedule 
-    grouped_data = master_df.groupby('study_day').apply(lambda x: x.to_dict('records'), include_groups=False)
+    # 2. Generate SRS Schedule (Group by day)
+    schedule_by_day = _generate_srs_schedule(master_df)
+    max_day = max(schedule_by_day.keys()) if schedule_by_day else 0
     
-    srs_schedule = {}
-    for day_str, items in grouped_data.items():
-        day_int = int(day_str) 
-        for item in items:
-            item['study_day'] = day_int 
-        srs_schedule[day_int] = items 
+    all_scheduled_days = set(schedule_by_day.keys())
     
-    # 3. Determine Days to Process (Declarative Logic V0.020)
-    all_days = sorted(srs_schedule.keys()) 
+    # 3. Determine Days to Process (Declarative Filter)
+    days_to_process = _determine_days_to_process(max_day)
     
-    # Identify days that are ALREADY COMPLETE on disk
-    processed_days = _get_processed_days(all_days)
-    
-    # Declarative Subtraction: Find days in ALL_DAYS that are NOT in PROCESSED_DAYS
-    days_to_process = sorted(list(set(all_days) - set(processed_days)))
-            
-    print(f"Identified days to process: {days_to_process}")
+    processed_days = sorted(list(all_scheduled_days - set(days_to_process)))
+    print(f"Days currently considered 'complete' for review item selection: {processed_days}")
 
     # 4. Process Missing Days
-    for day in days_to_process:
-        if day in srs_schedule:
-            _create_and_save_day_files(day, srs_schedule[day])
+    if not days_to_process:
+        print("\n--- ✅ All Scheduled Days Are Complete ---")
+        return
 
-if __name__ == "__main__":
+    for day in sorted(days_to_process):
+        if day in schedule_by_day:
+            new_items_df = schedule_by_day[day]
+            _process_day(day, new_items_df, processed_days)
+            
+            current_day_folder = OUTPUT_DIR / f'day_{day}'
+            current_file_count = len([f for f in current_day_folder.iterdir() if f.is_file() and not f.name.startswith('.')])
+            if current_file_count == EXPECTED_FILE_COUNT:
+                 processed_days.append(day)
+                 processed_days = sorted(list(set(processed_days)))
+        else:
+            print(f"Warning: Day {day} was marked for processing but has no new items in master data.")
+
+
+if __name__ == '__main__':
     run_workflow()
