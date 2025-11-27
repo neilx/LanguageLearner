@@ -1,151 +1,61 @@
-item_id,l1_text,l2_text,w1,w2,study_day
-1,L1 sentence 1 for arbitrary day 1.,L2 phrase 1 for arbitrary day 1.,0.5,0.9,1
-2,L1 sentence 2 for arbitrary day 1.,L2 phrase 2 for arbitrary day 1.,0.5,0.9,1
-3,L1 sentence 3 for arbitrary day 1.,L2 phrase 3 for arbitrary day 1.,0.5,0.9,1
-4,L1 sentence 4 for arbitrary day 1.,L2 phrase 4 for arbitrary day 1.,0.5,0.9,1
-5,L1 sentence 5 for arbitrary day 1.,L2 phrase 5 for arbitrary day 1.,0.5,0.9,1
-6,L1 sentence 6 for arbitrary day 1.,L2 phrase 6 for arbitrary day 1.,0.5,0.9,1
-7,L1 sentence 7 for arbitrary day 1.,L2 phrase 7 for arbitrary day 1.,0.5,0.9,1
-8,L1 sentence 8 for arbitrary day 1.,L2 phrase 8 for arbitrary day 1.,0.5,0.9,1
-9,L1 sentence 9 for arbitrary day 1.,L2 phrase 9 for arbitrary day 1.,0.5,0.9,1
-10,L1 sentence 10 for arbitrary day 1.,L2 phrase 10 for arbitrary day 1.,0.5,0.9,1
-11,L1 sentence 11 for arbitrary day 2.,L2 phrase 11 for arbitrary day 2.,0.5,0.9,2
-12,L1 sentence 12 for arbitrary day 2.,L2 phrase 12 for arbitrary day 2.,0.5,0.9,2
-13,L1 sentence 13 for arbitrary day 2.,L2 phrase 13 for arbitrary day 2.,0.5,0.9,2
-14,L1 sentence 14 for arbitrary day 2.,L2 phrase 14 for arbitrary day 2.,0.5,0.9,2
-15,L1 sentence 15 for arbitrary day 2.,L2 phrase 15 for arbitrary day 2.,0.5,0.9,2
-16,L1 sentence 16 for arbitrary day 2.,L2 phrase 16 for arbitrary day 2.,0.5,0.9,2
-17,L1 sentence 17 for arbitrary day 2.,L2 phrase 17 for arbitrary day 2.,0.5,0.9,2
-18,L1 sentence 18 for arbitrary day 2.,L2 phrase 18 for arbitrary day 2.,0.5,0.9,2
-19,L1 sentence 19 for arbitrary day 2.,L2 phrase 19 for arbitrary day 2.,0.5,0.9,2
-20,L1 sentence 20 for arbitrary day 2.,L2 phrase 20 for arbitrary day 2.,0.5,0.9,2
-21,L1 sentence 21 for arbitrary day 2.,L2 phrase 21 for arbitrary day 2.,0.5,0.9,2
-22,L1 sentence 22 for arbitrary day 2.,L2 phrase 22 for arbitrary day 2.,0.5,0.9,2
-23,L1 sentence 23 for arbitrary day 2.,L2 phrase 23 for arbitrary day 2.,0.5,0.9,2
-24,L1 sentence 24 for arbitrary day 2.,L2 phrase 24 for arbitrary day 2.,0.5,0.9,2
-25,L1 sentence 25 for arbitrary day 2.,L2 phrase 25 for arbitrary day 2.,0.5,0.9,2
-26,L1 sentence 26 for arbitrary day 2.,L2 phrase 26 for arbitrary day 2.,0.5,0.9,2
-27,L1 sentence 27 for arbitrary day 2.,L2 phrase 27 for arbitrary day 2.,0.5,0.9,2
-28,L1 sentence 28 for arbitrary day 2.,L2 phrase 28 for arbitrary day 2.,0.5,0.9,2
-29,L1 sentence 29 for arbitrary day 2.,L2 phrase 29 for arbitrary day 2.,0.5,0.9,2
-30,L1 sentence 30 for arbitrary day 2.,L2 phrase 30 for arbitrary day 2.,0.5,0.9,2
-31,L1 sentence 31 for arbitrary day 2.,L2 phrase 31 for arbitrary day 2.,0.5,0.9,2
-32,L1 sentence 32 for arbitrary day 2.,L2 phrase 32 for arbitrary day 2.,0.5,0.9,2
-33,L1 sentence 33 for arbitrary day 2.,L2 phrase 33 for arbitrary day 2.,0.5,0.9,2
-34,L1 sentence 34 for arbitrary day 2.,L2 phrase 34 for arbitrary day 2.,0.5,0.9,2
-35,L1 sentence 35 for arbitrary day 2.,L2 phrase 35 for arbitrary day 2.,0.5,0.9,2
-36,L1 sentence 36 for arbitrary day 2.,L2 phrase 36 for arbitrary day 2.,0.5,0.9,2
-37,L1 sentence 37 for arbitrary day 2.,L2 phrase 37 for arbitrary day 2.,0.5,0.9,2
-38,L1 sentence 38 for arbitrary day 2.,L2 phrase 38 for arbitrary day 2.,0.5,0.9,2
-39,L1 sentence 39 for arbitrary day 2.,L2 phrase 39 for arbitrary day 2.,0.5,0.9,2
-40,L1 sentence 40 for arbitrary day 2.,L2 phrase 40 for arbitrary day 2.,0.5,0.9,2
-41,L1 sentence 41 for arbitrary day 2.,L2 phrase 41 for arbitrary day 2.,0.5,0.9,2
-42,L1 sentence 42 for arbitrary day 2.,L2 phrase 42 for arbitrary day 2.,0.5,0.9,2
-43,L1 sentence 43 for arbitrary day 2.,L2 phrase 43 for arbitrary day 2.,0.5,0.9,2
-44,L1 sentence 44 for arbitrary day 2.,L2 phrase 44 for arbitrary day 2.,0.5,0.9,2
-45,L1 sentence 45 for arbitrary day 2.,L2 phrase 45 for arbitrary day 2.,0.5,0.9,2
-46,L1 sentence 46 for arbitrary day 2.,L2 phrase 46 for arbitrary day 2.,0.5,0.9,2
-47,L1 sentence 47 for arbitrary day 2.,L2 phrase 47 for arbitrary day 2.,0.5,0.9,2
-48,L1 sentence 48 for arbitrary day 2.,L2 phrase 48 for arbitrary day 2.,0.5,0.9,2
-49,L1 sentence 49 for arbitrary day 2.,L2 phrase 49 for arbitrary day 2.,0.5,0.9,2
-50,L1 sentence 50 for arbitrary day 2.,L2 phrase 50 for arbitrary day 2.,0.5,0.9,2
-51,L1 sentence 51 for arbitrary day 3.,L2 phrase 51 for arbitrary day 3.,0.5,0.9,3
-52,L1 sentence 52 for arbitrary day 3.,L2 phrase 52 for arbitrary day 3.,0.5,0.9,3
-53,L1 sentence 53 for arbitrary day 3.,L2 phrase 53 for arbitrary day 3.,0.5,0.9,3
-54,L1 sentence 54 for arbitrary day 3.,L2 phrase 54 for arbitrary day 3.,0.5,0.9,3
-55,L1 sentence 55 for arbitrary day 3.,L2 phrase 55 for arbitrary day 3.,0.5,0.9,3
-56,L1 sentence 56 for arbitrary day 3.,L2 phrase 56 for arbitrary day 3.,0.5,0.9,3
-57,L1 sentence 57 for arbitrary day 3.,L2 phrase 57 for arbitrary day 3.,0.5,0.9,3
-58,L1 sentence 58 for arbitrary day 3.,L2 phrase 58 for arbitrary day 3.,0.5,0.9,3
-59,L1 sentence 59 for arbitrary day 3.,L2 phrase 59 for arbitrary day 3.,0.5,0.9,3
-60,L1 sentence 60 for arbitrary day 3.,L2 phrase 60 for arbitrary day 3.,0.5,0.9,3
-61,L1 sentence 61 for arbitrary day 3.,L2 phrase 61 for arbitrary day 3.,0.5,0.9,3
-62,L1 sentence 62 for arbitrary day 3.,L2 phrase 62 for arbitrary day 3.,0.5,0.9,3
-63,L1 sentence 63 for arbitrary day 3.,L2 phrase 63 for arbitrary day 3.,0.5,0.9,3
-64,L1 sentence 64 for arbitrary day 3.,L2 phrase 64 for arbitrary day 3.,0.5,0.9,3
-65,L1 sentence 65 for arbitrary day 3.,L2 phrase 65 for arbitrary day 3.,0.5,0.9,3
-66,L1 sentence 66 for arbitrary day 3.,L2 phrase 66 for arbitrary day 3.,0.5,0.9,3
-67,L1 sentence 67 for arbitrary day 3.,L2 phrase 67 for arbitrary day 3.,0.5,0.9,3
-68,L1 sentence 68 for arbitrary day 3.,L2 phrase 68 for arbitrary day 3.,0.5,0.9,3
-69,L1 sentence 69 for arbitrary day 3.,L2 phrase 69 for arbitrary day 3.,0.5,0.9,3
-70,L1 sentence 70 for arbitrary day 3.,L2 phrase 70 for arbitrary day 3.,0.5,0.9,3
-71,L1 sentence 71 for arbitrary day 3.,L2 phrase 71 for arbitrary day 3.,0.5,0.9,3
-72,L1 sentence 72 for arbitrary day 3.,L2 phrase 72 for arbitrary day 3.,0.5,0.9,3
-73,L1 sentence 73 for arbitrary day 3.,L2 phrase 73 for arbitrary day 3.,0.5,0.9,3
-74,L1 sentence 74 for arbitrary day 3.,L2 phrase 74 for arbitrary day 3.,0.5,0.9,3
-75,L1 sentence 75 for arbitrary day 3.,L2 phrase 75 for arbitrary day 3.,0.5,0.9,3
-76,L1 sentence 76 for arbitrary day 3.,L2 phrase 76 for arbitrary day 3.,0.5,0.9,3
-77,L1 sentence 77 for arbitrary day 3.,L2 phrase 77 for arbitrary day 3.,0.5,0.9,3
-78,L1 sentence 78 for arbitrary day 3.,L2 phrase 78 for arbitrary day 3.,0.5,0.9,3
-79,L1 sentence 79 for arbitrary day 3.,L2 phrase 79 for arbitrary day 3.,0.5,0.9,3
-80,L1 sentence 80 for arbitrary day 3.,L2 phrase 80 for arbitrary day 3.,0.5,0.9,3
-81,L1 sentence 81 for arbitrary day 3.,L2 phrase 81 for arbitrary day 3.,0.5,0.9,3
-82,L1 sentence 82 for arbitrary day 3.,L2 phrase 82 for arbitrary day 3.,0.5,0.9,3
-83,L1 sentence 83 for arbitrary day 3.,L2 phrase 83 for arbitrary day 3.,0.5,0.9,3
-84,L1 sentence 84 for arbitrary day 3.,L2 phrase 84 for arbitrary day 3.,0.5,0.9,3
-85,L1 sentence 85 for arbitrary day 3.,L2 phrase 85 for arbitrary day 3.,0.5,0.9,3
-86,L1 sentence 86 for arbitrary day 3.,L2 phrase 86 for arbitrary day 3.,0.5,0.9,3
-87,L1 sentence 87 for arbitrary day 3.,L2 phrase 87 for arbitrary day 3.,0.5,0.9,3
-88,L1 sentence 88 for arbitrary day 3.,L2 phrase 88 for arbitrary day 3.,0.5,0.9,3
-89,L1 sentence 89 for arbitrary day 3.,L2 phrase 89 for arbitrary day 3.,0.5,0.9,3
-90,L1 sentence 90 for arbitrary day 3.,L2 phrase 90 for arbitrary day 3.,0.5,0.9,3
-91,L1 sentence 91 for arbitrary day 3.,L2 phrase 91 for arbitrary day 3.,0.5,0.9,3
-92,L1 sentence 92 for arbitrary day 3.,L2 phrase 92 for arbitrary day 3.,0.5,0.9,3
-93,L1 sentence 93 for arbitrary day 3.,L2 phrase 93 for arbitrary day 3.,0.5,0.9,3
-94,L1 sentence 94 for arbitrary day 3.,L2 phrase 94 for arbitrary day 3.,0.5,0.9,3
-95,L1 sentence 95 for arbitrary day 3.,L2 phrase 95 for arbitrary day 3.,0.5,0.9,3
-96,L1 sentence 96 for arbitrary day 3.,L2 phrase 96 for arbitrary day 3.,0.5,0.9,3
-97,L1 sentence 97 for arbitrary day 3.,L2 phrase 97 for arbitrary day 3.,0.5,0.9,3
-98,L1 sentence 98 for arbitrary day 3.,L2 phrase 98 for arbitrary day 3.,0.5,0.9,3
-99,L1 sentence 99 for arbitrary day 3.,L2 phrase 99 for arbitrary day 3.,0.5,0.9,3
-100,L1 sentence 100 for arbitrary day 3.,L2 phrase 100 for arbitrary day 3.,0.5,0.9,3
-101,L1 sentence 101 for arbitrary day 3.,L2 phrase 101 for arbitrary day 3.,0.5,0.9,3
-102,L1 sentence 102 for arbitrary day 3.,L2 phrase 102 for arbitrary day 3.,0.5,0.9,3
-103,L1 sentence 103 for arbitrary day 3.,L2 phrase 103 for arbitrary day 3.,0.5,0.9,3
-104,L1 sentence 104 for arbitrary day 3.,L2 phrase 104 for arbitrary day 3.,0.5,0.9,3
-105,L1 sentence 105 for arbitrary day 3.,L2 phrase 105 for arbitrary day 3.,0.5,0.9,3
-106,L1 sentence 106 for arbitrary day 3.,L2 phrase 106 for arbitrary day 3.,0.5,0.9,3
-107,L1 sentence 107 for arbitrary day 3.,L2 phrase 107 for arbitrary day 3.,0.5,0.9,3
-108,L1 sentence 108 for arbitrary day 3.,L2 phrase 108 for arbitrary day 3.,0.5,0.9,3
-109,L1 sentence 109 for arbitrary day 3.,L2 phrase 109 for arbitrary day 3.,0.5,0.9,3
-110,L1 sentence 110 for arbitrary day 3.,L2 phrase 110 for arbitrary day 3.,0.5,0.9,3
-111,L1 sentence 111 for arbitrary day 3.,L2 phrase 111 for arbitrary day 3.,0.5,0.9,3
-112,L1 sentence 112 for arbitrary day 3.,L2 phrase 112 for arbitrary day 3.,0.5,0.9,3
-113,L1 sentence 113 for arbitrary day 3.,L2 phrase 113 for arbitrary day 3.,0.5,0.9,3
-114,L1 sentence 114 for arbitrary day 3.,L2 phrase 114 for arbitrary day 3.,0.5,0.9,3
-115,L1 sentence 115 for arbitrary day 3.,L2 phrase 115 for arbitrary day 3.,0.5,0.9,3
-116,L1 sentence 116 for arbitrary day 3.,L2 phrase 116 for arbitrary day 3.,0.5,0.9,3
-117,L1 sentence 117 for arbitrary day 3.,L2 phrase 117 for arbitrary day 3.,0.5,0.9,3
-118,L1 sentence 118 for arbitrary day 3.,L2 phrase 118 for arbitrary day 3.,0.5,0.9,3
-119,L1 sentence 119 for arbitrary day 3.,L2 phrase 119 for arbitrary day 3.,0.5,0.9,3
-120,L1 sentence 120 for arbitrary day 3.,L2 phrase 120 for arbitrary day 3.,0.5,0.9,3
-121,L1 sentence 121 for arbitrary day 3.,L2 phrase 121 for arbitrary day 3.,0.5,0.9,3
-122,L1 sentence 122 for arbitrary day 3.,L2 phrase 122 for arbitrary day 3.,0.5,0.9,3
-123,L1 sentence 123 for arbitrary day 3.,L2 phrase 123 for arbitrary day 3.,0.5,0.9,3
-124,L1 sentence 124 for arbitrary day 3.,L2 phrase 124 for arbitrary day 3.,0.5,0.9,3
-125,L1 sentence 125 for arbitrary day 3.,L2 phrase 125 for arbitrary day 3.,0.5,0.9,3
-126,L1 sentence 126 for arbitrary day 3.,L2 phrase 126 for arbitrary day 3.,0.5,0.9,3
-127,L1 sentence 127 for arbitrary day 3.,L2 phrase 127 for arbitrary day 3.,0.5,0.9,3
-128,L1 sentence 128 for arbitrary day 3.,L2 phrase 128 for arbitrary day 3.,0.5,0.9,3
-129,L1 sentence 129 for arbitrary day 3.,L2 phrase 129 for arbitrary day 3.,0.5,0.9,3
-130,L1 sentence 130 for arbitrary day 3.,L2 phrase 130 for arbitrary day 3.,0.5,0.9,3
-131,L1 sentence 131 for arbitrary day 3.,L2 phrase 131 for arbitrary day 3.,0.5,0.9,3
-132,L1 sentence 132 for arbitrary day 3.,L2 phrase 132 for arbitrary day 3.,0.5,0.9,3
-133,L1 sentence 133 for arbitrary day 3.,L2 phrase 133 for arbitrary day 3.,0.5,0.9,3
-134,L1 sentence 134 for arbitrary day 3.,L2 phrase 134 for arbitrary day 3.,0.5,0.9,3
-135,L1 sentence 135 for arbitrary day 3.,L2 phrase 135 for arbitrary day 3.,0.5,0.9,3
-136,L1 sentence 136 for arbitrary day 3.,L2 phrase 136 for arbitrary day 3.,0.5,0.9,3
-137,L1 sentence 137 for arbitrary day 3.,L2 phrase 137 for arbitrary day 3.,0.5,0.9,3
-138,L1 sentence 138 for arbitrary day 3.,L2 phrase 138 for arbitrary day 3.,0.5,0.9,3
-139,L1 sentence 139 for arbitrary day 3.,L2 phrase 139 for arbitrary day 3.,0.5,0.9,3
-140,L1 sentence 140 for arbitrary day 3.,L2 phrase 140 for arbitrary day 3.,0.5,0.9,3
-141,L1 sentence 141 for arbitrary day 3.,L2 phrase 141 for arbitrary day 3.,0.5,0.9,3
-142,L1 sentence 142 for arbitrary day 3.,L2 phrase 142 for arbitrary day 3.,0.5,0.9,3
-143,L1 sentence 143 for arbitrary day 3.,L2 phrase 143 for arbitrary day 3.,0.5,0.9,3
-144,L1 sentence 144 for arbitrary day 3.,L2 phrase 144 for arbitrary day 3.,0.5,0.9,3
-145,L1 sentence 145 for arbitrary day 3.,L2 phrase 145 for arbitrary day 3.,0.5,0.9,3
-146,L1 sentence 146 for arbitrary day 3.,L2 phrase 146 for arbitrary day 3.,0.5,0.9,3
-147,L1 sentence 147 for arbitrary day 3.,L2 phrase 147 for arbitrary day 3.,0.5,0.9,3
-148,L1 sentence 148 for arbitrary day 3.,L2 phrase 148 for arbitrary day 3.,0.5,0.9,3
-149,L1 sentence 149 for arbitrary day 3.,L2 phrase 149 for arbitrary day 3.,0.5,0.9,3
-150,L1 sentence 150 for arbitrary day 3.,L2 phrase 150 for arbitrary day 3.,0.5,0.9,3
+item_id,w2,w1,l1_text,l2_text,study_day
+1,danish_word_1,english_word_1,This is the English sentence containing english_word_1.,"Dette er den danske sætning, der indeholder danish_word_1.",1
+2,danish_word_2,english_word_2,This is the English sentence containing english_word_2.,"Dette er den danske sætning, der indeholder danish_word_2.",1
+3,danish_word_3,english_word_3,This is the English sentence containing english_word_3.,"Dette er den danske sætning, der indeholder danish_word_3.",1
+4,danish_word_4,english_word_4,This is the English sentence containing english_word_4.,"Dette er den danske sætning, der indeholder danish_word_4.",1
+5,danish_word_5,english_word_5,This is the English sentence containing english_word_5.,"Dette er den danske sætning, der indeholder danish_word_5.",1
+6,danish_word_6,english_word_6,This is the English sentence containing english_word_6.,"Dette er den danske sætning, der indeholder danish_word_6.",1
+7,danish_word_7,english_word_7,This is the English sentence containing english_word_7.,"Dette er den danske sætning, der indeholder danish_word_7.",1
+8,danish_word_8,english_word_8,This is the English sentence containing english_word_8.,"Dette er den danske sætning, der indeholder danish_word_8.",1
+9,danish_word_9,english_word_9,This is the English sentence containing english_word_9.,"Dette er den danske sætning, der indeholder danish_word_9.",1
+10,danish_word_10,english_word_10,This is the English sentence containing english_word_10.,"Dette er den danske sætning, der indeholder danish_word_10.",1
+11,danish_word_11,english_word_11,This is the English sentence containing english_word_11.,"Dette er den danske sætning, der indeholder danish_word_11.",2
+12,danish_word_12,english_word_12,This is the English sentence containing english_word_12.,"Dette er den danske sætning, der indeholder danish_word_12.",2
+13,danish_word_13,english_word_13,This is the English sentence containing english_word_13.,"Dette er den danske sætning, der indeholder danish_word_13.",2
+14,danish_word_14,english_word_14,This is the English sentence containing english_word_14.,"Dette er den danske sætning, der indeholder danish_word_14.",2
+15,danish_word_15,english_word_15,This is the English sentence containing english_word_15.,"Dette er den danske sætning, der indeholder danish_word_15.",2
+16,danish_word_16,english_word_16,This is the English sentence containing english_word_16.,"Dette er den danske sætning, der indeholder danish_word_16.",2
+17,danish_word_17,english_word_17,This is the English sentence containing english_word_17.,"Dette er den danske sætning, der indeholder danish_word_17.",2
+18,danish_word_18,english_word_18,This is the English sentence containing english_word_18.,"Dette er den danske sætning, der indeholder danish_word_18.",2
+19,danish_word_19,english_word_19,This is the English sentence containing english_word_19.,"Dette er den danske sætning, der indeholder danish_word_19.",2
+20,danish_word_20,english_word_20,This is the English sentence containing english_word_20.,"Dette er den danske sætning, der indeholder danish_word_20.",2
+21,danish_word_21,english_word_21,This is the English sentence containing english_word_21.,"Dette er den danske sætning, der indeholder danish_word_21.",3
+22,danish_word_22,english_word_22,This is the English sentence containing english_word_22.,"Dette er den danske sætning, der indeholder danish_word_22.",3
+23,danish_word_23,english_word_23,This is the English sentence containing english_word_23.,"Dette er den danske sætning, der indeholder danish_word_23.",3
+24,danish_word_24,english_word_24,This is the English sentence containing english_word_24.,"Dette er den danske sætning, der indeholder danish_word_24.",3
+25,danish_word_25,english_word_25,This is the English sentence containing english_word_25.,"Dette er den danske sætning, der indeholder danish_word_25.",3
+26,danish_word_26,english_word_26,This is the English sentence containing english_word_26.,"Dette er den danske sætning, der indeholder danish_word_26.",3
+27,danish_word_27,english_word_27,This is the English sentence containing english_word_27.,"Dette er den danske sætning, der indeholder danish_word_27.",3
+28,danish_word_28,english_word_28,This is the English sentence containing english_word_28.,"Dette er den danske sætning, der indeholder danish_word_28.",3
+29,danish_word_29,english_word_29,This is the English sentence containing english_word_29.,"Dette er den danske sætning, der indeholder danish_word_29.",3
+30,danish_word_30,english_word_30,This is the English sentence containing english_word_30.,"Dette er den danske sætning, der indeholder danish_word_30.",3
+31,danish_word_31,english_word_31,This is the English sentence containing english_word_31.,"Dette er den danske sætning, der indeholder danish_word_31.",4
+32,danish_word_32,english_word_32,This is the English sentence containing english_word_32.,"Dette er den danske sætning, der indeholder danish_word_32.",4
+33,danish_word_33,english_word_33,This is the English sentence containing english_word_33.,"Dette er den danske sætning, der indeholder danish_word_33.",4
+34,danish_word_34,english_word_34,This is the English sentence containing english_word_34.,"Dette er den danske sætning, der indeholder danish_word_34.",4
+35,danish_word_35,english_word_35,This is the English sentence containing english_word_35.,"Dette er den danske sætning, der indeholder danish_word_35.",4
+36,danish_word_36,english_word_36,This is the English sentence containing english_word_36.,"Dette er den danske sætning, der indeholder danish_word_36.",4
+37,danish_word_37,english_word_37,This is the English sentence containing english_word_37.,"Dette er den danske sætning, der indeholder danish_word_37.",4
+38,danish_word_38,english_word_38,This is the English sentence containing english_word_38.,"Dette er den danske sætning, der indeholder danish_word_38.",4
+39,danish_word_39,english_word_39,This is the English sentence containing english_word_39.,"Dette er den danske sætning, der indeholder danish_word_39.",4
+40,danish_word_40,english_word_40,This is the English sentence containing english_word_40.,"Dette er den danske sætning, der indeholder danish_word_40.",4
+41,danish_word_41,english_word_41,This is the English sentence containing english_word_41.,"Dette er den danske sætning, der indeholder danish_word_41.",5
+42,danish_word_42,english_word_42,This is the English sentence containing english_word_42.,"Dette er den danske sætning, der indeholder danish_word_42.",5
+43,danish_word_43,english_word_43,This is the English sentence containing english_word_43.,"Dette er den danske sætning, der indeholder danish_word_43.",5
+44,danish_word_44,english_word_44,This is the English sentence containing english_word_44.,"Dette er den danske sætning, der indeholder danish_word_44.",5
+45,danish_word_45,english_word_45,This is the English sentence containing english_word_45.,"Dette er den danske sætning, der indeholder danish_word_45.",5
+46,danish_word_46,english_word_46,This is the English sentence containing english_word_46.,"Dette er den danske sætning, der indeholder danish_word_46.",5
+47,danish_word_47,english_word_47,This is the English sentence containing english_word_47.,"Dette er den danske sætning, der indeholder danish_word_47.",5
+48,danish_word_48,english_word_48,This is the English sentence containing english_word_48.,"Dette er den danske sætning, der indeholder danish_word_48.",5
+49,danish_word_49,english_word_49,This is the English sentence containing english_word_49.,"Dette er den danske sætning, der indeholder danish_word_49.",5
+50,danish_word_50,english_word_50,This is the English sentence containing english_word_50.,"Dette er den danske sætning, der indeholder danish_word_50.",5
+51,danish_word_51,english_word_51,This is the English sentence containing english_word_51.,"Dette er den danske sætning, der indeholder danish_word_51.",6
+52,danish_word_52,english_word_52,This is the English sentence containing english_word_52.,"Dette er den danske sætning, der indeholder danish_word_52.",6
+53,danish_word_53,english_word_53,This is the English sentence containing english_word_53.,"Dette er den danske sætning, der indeholder danish_word_53.",6
+54,danish_word_54,english_word_54,This is the English sentence containing english_word_54.,"Dette er den danske sætning, der indeholder danish_word_54.",6
+55,danish_word_55,english_word_55,This is the English sentence containing english_word_55.,"Dette er den danske sætning, der indeholder danish_word_55.",6
+56,danish_word_56,english_word_56,This is the English sentence containing english_word_56.,"Dette er den danske sætning, der indeholder danish_word_56.",6
+57,danish_word_57,english_word_57,This is the English sentence containing english_word_57.,"Dette er den danske sætning, der indeholder danish_word_57.",6
+58,danish_word_58,english_word_58,This is the English sentence containing english_word_58.,"Dette er den danske sætning, der indeholder danish_word_58.",6
+59,danish_word_59,english_word_59,This is the English sentence containing english_word_59.,"Dette er den danske sætning, der indeholder danish_word_59.",6
+60,danish_word_60,english_word_60,This is the English sentence containing english_word_60.,"Dette er den danske sætning, der indeholder danish_word_60.",6
