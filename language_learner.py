@@ -1,495 +1,283 @@
 import pandas as pd
 import numpy as np
-import os
-import shutil
-import hashlib
-import time
+from pathlib import Path
+import csv
 import random
-from io import BytesIO
+import os
+import hashlib
+from typing import List, Dict, Any
 
-# Third-party libraries for audio manipulation
+# --- External Audio Libraries ---
 try:
-    from pydub import AudioSegment
-    # Check for FFMPEG dependency
-    AudioSegment.converter = "ffmpeg"
-except ImportError:
-    print("Error: pydub is not installed. Run 'pip install pydub'")
-    exit()
-except FileNotFoundError:
-    print("Error: FFMPEG is required by pydub but not found.")
-    print("Please install FFMPEG and ensure it's in your system PATH.")
-    exit()
-
-# Third-party library for TTS
-try:
-    # Using the free gTTS API
     from gtts import gTTS
-    from gtts.tts import gTTSError 
+    from pydub import AudioSegment
+    # NOTE: The problematic 'SilenceSegment' import has been removed.
 except ImportError:
-    print("Warning: The 'gTTS' package is not installed or importable.")
-    print("The script will run only in MOCK_MODE = True until installed.")
+    print("Error: Required libraries (gTTS, pydub) not found.")
+    print("Please ensure you installed them in your Thonny environment.")
+    exit()
 
-# --- 1. CONSTANTS AND CONFIGURATION ---
-
-# **TOGGLE SET:** Set to False to use the real, free gTTS API.
-MOCK_MODE = False
-
-# File Paths
-INPUT_CSV = "sentence_pairs.csv"
-OUTPUT_DIR_BASE = "output"
-CACHE_DIR = "cache"
-RAW_PCM_CACHE = os.path.join(CACHE_DIR, "tts_raw")
-MP3_CACHE = os.path.join(CACHE_DIR, "mp3")
-
-# Audio Parameters
-PCM_SAMPLE_RATE = 24000  # Target sample rate (Hz)
-PCM_CHANNELS = 1         # Mono channel count
-PCM_SAMPLE_WIDTH = 2     # 16-bit signed PCM (2 bytes)
-
-# Speed and Pauses
-L1_SPEED_FACTOR = 1.1
-L2_SPEED_FACTOR = 1.3
-PAUSE_L1_MS = 500  # Short pause (500ms)
-PAUSE_L2_MS = 1000 # Long pause (1000ms)
-
-# SRS Parameters
-MICRO_REPETITION_FACTOR = 3 
-REVIEW_RATIO = 5           
-MIN_REVIEW = 1             
-INTERLEAVE_FREQUENCY = 5   
-
-# Workflow Parameters
-VALIDATION_TOLERANCE = 0.05 
-MAX_RETRIES = 5             
-
-# --- 2. CUSTOM EXCEPTION ---
-
-class WorkflowException(Exception):
-    """Custom exception for workflow failures that require cleanup."""
+# --- CRITICAL: FFmpeg Path Configuration ---
+# You confirmed FFmpeg is installed. If the script fails, double-check this path.
+# REPLACE this example path with the actual location of your ffmpeg/bin folder
+try:
+    os.environ["PATH"] += os.pathsep + r'C:\Program Files\ffmpeg\bin' 
+except:
     pass
 
-# --- 3. TTS API WRAPPER (CONDITIONAL MOCKING & gTTS IMPLEMENTATION) ---
+# --- 4. Constants (for Python Script) ---
+WORKFLOW_VERSION = 'v0.023'
+REVIEW_RATIO = 5  # New Items to Review Items (5:1)
+EXPECTED_FILE_COUNT = 4  # 1 CSV + 3 MP3s
+L2_SPEED_FACTOR = 1.4
+PAUSE_L1_MS = 500
+PAUSE_L2_MS = 1000
+PAUSE_SHADOW_MS = 2500 # Extra long pause for review shadowing
 
-class GeminiTTSAPI:
-    """
-    A wrapper class for the Text-to-Speech API, using conditional mocking and gTTS.
-    """
+# --- Configuration (NFR-6 IMMUTABLE NAMES) ---
+MASTER_DATA_FILE = Path('sentence_pairs.csv')
+OUTPUT_DIR = Path('output') 
+CACHE_DIR = Path('cache')   
+
+# Ensure directories exist
+OUTPUT_DIR.mkdir(exist_ok=True)
+CACHE_DIR.mkdir(exist_ok=True) 
+
+# Define the order of columns (as per 2.1)
+SCHEDULE_COLUMNS = [
+    'item_id', 'w2', 'w1', 'l1_text', 'l2_text', 'study_day'
+]
+# Expected output files (excluding the schedule.csv)
+EXPECTED_FILES = [
+    'workflow.mp3', 'review.mp3', 'reverse.mp3', 'schedule.csv'
+]
+
+# --- Cache and Audio Utility Functions ---
+
+def _get_cached_audio_path(text: str) -> Path:
+    """NFR-5: Generates a unique filename (MD5 hash) for the text content."""
+    hash_object = hashlib.md5(text.strip().lower().encode('utf-8'))
+    filename = f"{hash_object.hexdigest()}.mp3"
+    return CACHE_DIR / filename
+
+def _apply_speed_change(segment: AudioSegment, speed: float) -> AudioSegment:
+    """Adjusts the playback speed of an AudioSegment by changing the frame rate."""
+    if speed == 1.0:
+        return segment
+    return segment.set_frame_rate(int(segment.frame_rate * speed))
+
+def _tts_generate_and_cache(text: str, lang: str, is_l2: bool) -> AudioSegment:
+    """Generates TTS audio, uses the cache if available, and applies speed factor."""
+    cache_path = _get_cached_audio_path(text)
     
-    def __init__(self, mock_mode: bool): 
-        self.mock_mode = mock_mode
-        
-        if not self.mock_mode:
-            print("Using gTTS (Google Translate TTS) for real API calls.")
-        
-        # Stats tracking
-        self._total_tts_api_calls = 0
-        self._total_raw_pcm_cache_hits = 0
-        self._total_mp3_cache_hits = 0
-
-    def _generate_synthetic_pcm(self, text: str) -> bytes:
-        """
-        MOCK IMPLEMENTATION: Simulates TTS by generating synthetic PCM audio.
-        """
-        text_len = len(text)
-        duration_s = 0.5 + 0.05 * text_len
-        num_samples = int(duration_s * PCM_SAMPLE_RATE)
-        
-        freq_factor = 200 + text_len * 5
-        t = np.linspace(0, duration_s, num_samples, endpoint=False)
-        audio_data = np.sin(2 * np.pi * freq_factor * t)
-        
-        max_int = 2**15 - 1
-        audio_int = (audio_data * max_int).astype(np.int16)
-        
-        return audio_int.tobytes()
-
-    def _call_real_tts_api(self, text: str, lang: str) -> bytes:
-        """
-        REAL API IMPLEMENTATION: Uses the gTTS package to generate raw PCM data.
-        """
-        
-        # Map internal codes to gTTS standard language codes
-        if lang == 'L1':
-            # English voice for L1
-            gtts_lang = 'en' 
-        elif lang == 'L2':
-            # Danish voice for L2
-            gtts_lang = 'da'
-        else:
-            raise ValueError(f"Unknown language code for gTTS: {lang}")
-            
-        try:
-            # 1. Generate MP3 into a memory buffer using gTTS
-            tts = gTTS(text=text, lang=gtts_lang)
-            mp3_fp = BytesIO()
-            tts.write_to_fp(mp3_fp)
-            mp3_fp.seek(0)
-            
-            # 2. Use pydub to load the MP3 from the buffer
-            audio_segment = AudioSegment.from_file(mp3_fp, format="mp3")
-            
-            # 3. Export the AudioSegment as raw PCM bytes matching the target parameters
-            raw_pcm_bytes = audio_segment.set_frame_rate(PCM_SAMPLE_RATE).set_channels(PCM_CHANNELS).set_sample_width(PCM_SAMPLE_WIDTH).raw_data
-            
-            return raw_pcm_bytes
-            
-        except gTTSError as e:
-            # Catch specific gTTS errors (e.g., failed API call, network issue)
-            raise IOError(f"gTTS API call failed: {e}") from e
-        except Exception as e:
-            # Catch other conversion/pydub errors
-            raise IOError(f"Audio conversion failed after gTTS call: {e}") from e
-
-
-    def _call_tts_service(self, text: str, lang: str) -> bytes:
-        """
-        Handles the TTS call, choosing between mock and real implementation, 
-        and applying retry logic.
-        """
-        if self.mock_mode:
-            tts_function = lambda t: self._generate_synthetic_pcm(t)
-            simulate_error = lambda: random.random() < 0.1
-        else:
-            tts_function = lambda t: self._call_real_tts_api(t, lang)
-            simulate_error = lambda: False 
-
-        for attempt in range(MAX_RETRIES):
-            try:
-                # Mock failure simulation
-                if self.mock_mode and simulate_error() and attempt < MAX_RETRIES - 1:
-                    raise IOError("Mock API Call Failed (Simulated transient error)")
-
-                raw_pcm_bytes = tts_function(text)
-                self._total_tts_api_calls += 1
-                return raw_pcm_bytes
-            
-            except IOError as e:
-                # Catching IOError from mock or real API failure
-                if attempt == MAX_RETRIES - 1:
-                    print(f"Error: Final attempt failed for '{text}'.")
-                    raise WorkflowException(f"TTS API failed after {MAX_RETRIES} attempts. Reason: {e}") from e
-                
-                sleep_time = 2 ** attempt
-                print(f"Warning: TTS API call failed (attempt {attempt+1}). Retrying in {sleep_time}s...")
-                time.sleep(sleep_time)
-
-    def get_speed_adjusted_segment(self, text: str, lang: str, speed_factor: float) -> AudioSegment:
-        """
-        Retrieves/generates the speed-adjusted MP3 AudioSegment using two-tier caching.
-        """
-        # Note: The text_hash implicitly includes the language, because the lang is part of the hash input.
-        text_hash = hashlib.sha256(f"{lang}:{text}".encode('utf-8')).hexdigest()
-        speed_tag = f"{speed_factor:.2f}x".replace('.', 'p') 
-        mp3_path = os.path.join(MP3_CACHE, f"{text_hash}_{speed_tag}.mp3")
-
-        # Tier 2 Cache Check (MP3, speed-adjusted)
-        if os.path.exists(mp3_path):
-            self._total_mp3_cache_hits += 1
-            return AudioSegment.from_mp3(mp3_path)
-
-        # Tier 1 Cache Check (Raw PCM, non-adjusted)
-        pcm_path = os.path.join(RAW_PCM_CACHE, f"{text_hash}.rawpcm")
-        if os.path.exists(pcm_path):
-            self._total_raw_pcm_cache_hits += 1
-            with open(pcm_path, 'rb') as f:
-                raw_pcm_bytes = f.read()
-        else:
-            # Call TTS service (gTTS)
-            raw_pcm_bytes = self._call_tts_service(text, lang)
-            
-            # Cache Save (Tier 1)
-            os.makedirs(RAW_PCM_CACHE, exist_ok=True)
-            with open(pcm_path, 'wb') as f:
-                f.write(raw_pcm_bytes)
-        
-        # Convert and Speed Adjust
-        audio_segment = AudioSegment.from_raw(
-            BytesIO(raw_pcm_bytes),
-            sample_width=PCM_SAMPLE_WIDTH,
-            frame_rate=PCM_SAMPLE_RATE,
-            channels=PCM_CHANNELS
-        )
-
-        new_frame_rate = int(PCM_SAMPLE_RATE * speed_factor)
-        adjusted_segment = audio_segment.set_frame_rate(new_frame_rate)
-
-        # Tier 2 Cache Save
-        os.makedirs(MP3_CACHE, exist_ok=True)
-        adjusted_segment.export(
-            mp3_path, 
-            format="mp3", 
-            parameters=["-q:a", "5"]
-        )
-
-        return adjusted_segment
-
-# --- 4. SRS SCHEDULING LOGIC (Unchanged) ---
-
-def _generate_review_schedule(df: pd.DataFrame, current_day: int, random_state: int) -> tuple[pd.DataFrame, int, int]:
-    """
-    Generates the day's schedule by interleaving new and review items.
-    """
-    df_pool = df[df['study_day'] <= current_day].copy()
-
-    # 1. New Items
-    new_items_df = df_pool[df_pool['study_day'] == current_day]
-    unique_new_items = new_items_df.copy()
-    
-    # Repeat new items by the factor
-    new_list = pd.concat([unique_new_items] * MICRO_REPETITION_FACTOR, ignore_index=True)
-    actual_new_unique_count = len(unique_new_items)
-    expected_new_count = len(new_list)
-
-    # 2. Review Items
-    review_pool_df = df_pool[df_pool['study_day'] < current_day]
-    
-    if not review_pool_df.empty:
-        baseline_review = actual_new_unique_count / REVIEW_RATIO
-        expected_count = max(MIN_REVIEW, int(np.ceil(baseline_review)))
-        max_possible_review = len(review_pool_df)
-        expected_review_count = min(expected_count, max_possible_review)
-
-        random.seed(random_state)
-        review_list = review_pool_df.sample(
-            n=expected_review_count, 
-            replace=False, 
-            random_state=random_state
-        )
+    if cache_path.is_file():
+        audio_segment = AudioSegment.from_mp3(cache_path)
     else:
-        review_list = pd.DataFrame()
-        expected_review_count = 0
+        print(f"    - Cache miss for {lang} text (hash: {cache_path.name[:8]}...). Synthesizing and caching.")
+        
+        temp_file_path = CACHE_DIR / f'temp_{cache_path.name}'
+        
+        tts = gTTS(text=text, lang=lang, slow=False)
+        tts.save(temp_file_path)
+        
+        audio_segment = AudioSegment.from_mp3(temp_file_path)
+        
+        if is_l2:
+            audio_segment = _apply_speed_change(audio_segment, L2_SPEED_FACTOR)
 
-    # 3. Interleaving
-    schedule_list = []
-    i_new, i_review = 0, 0
+        audio_segment.export(cache_path, format="mp3")
+        
+        os.remove(temp_file_path)
+
+    return audio_segment
+
+# --- Workflow Functions ---
+
+def _load_or_generate_master_data(df: pd.DataFrame) -> pd.DataFrame:
+    """1. Load/Generate Master Data."""
+    print(f"Loading master data from {MASTER_DATA_FILE}...")
     
-    new_records = new_list.to_dict('records')
-    review_records = review_list.to_dict('records')
+    if MASTER_DATA_FILE.exists():
+        master_df = pd.read_csv(MASTER_DATA_FILE)
+    else:
+        print("Master data file not found. Generating dummy data for simulation.")
+        data = {
+            'item_id': list(range(1, 61)),
+            'w2': [f'danish_word_{i}' for i in range(1, 61)],
+            'w1': [f'english_word_{i}' for i in range(1, 61)],
+            'l1_text': [f'This is the English sentence containing english_word_{i}.' for i in range(1, 61)],
+            'l2_text': [f'Dette er den danske sætning, der indeholder danish_word_{i}.' for i in range(1, 61)],
+            'study_day': (np.arange(60) // 10) + 1 
+        }
+        master_df = pd.DataFrame(data, columns=SCHEDULE_COLUMNS)
+        master_df.to_csv(MASTER_DATA_FILE, index=False)
+
+    master_df['study_day'] = master_df['study_day'].astype(int)
+    print(f"Master data loaded with {len(master_df)} items.")
+    return master_df
+
+def _generate_srs_schedule(master_df: pd.DataFrame) -> Dict[int, pd.DataFrame]:
+    """2. Generate SRS Schedule."""
+    print("Generating SRS schedule by study_day...")
+    schedule_by_day = master_df.groupby('study_day')
+    return {day: df for day, df in schedule_by_day}
+
+def _determine_days_to_process(max_day: int) -> List[int]:
+    """3. Determine Days to Process (Declarative Filter)."""
+    print("Determining incomplete days using declarative file check...")
+    days_to_process = []
     
-    while i_new < expected_new_count or i_review < expected_review_count:
-        for _ in range(INTERLEAVE_FREQUENCY):
-            if i_new < expected_new_count:
-                schedule_list.append(new_records[i_new])
-                i_new += 1
+    for day in range(1, max_day + 1):
+        day_folder = OUTPUT_DIR / f'day_{day}'
         
-        if i_review < expected_review_count:
-            schedule_list.append(review_records[i_review])
-            i_review += 1
+        if not day_folder.is_dir():
+            days_to_process.append(day)
+            continue
+
+        missing_expected_file = False
+        for expected_file in EXPECTED_FILES:
+            if not (day_folder / expected_file).is_file():
+                missing_expected_file = True
+                break
+
+        if missing_expected_file:
+            days_to_process.append(day)
+            
+    print(f"Days identified for processing: {days_to_process}")
+    return days_to_process
+
+def _get_all_past_items(processed_days: List[int]) -> pd.DataFrame:
+    """Retrieves all items from schedule.csv files for completely processed days."""
+    all_past_items = []
     
-    schedule_df = pd.DataFrame(schedule_list)
-
-    actual_new_count = len(schedule_df[schedule_df['study_day'] == current_day])
-    actual_review_count = len(schedule_df[schedule_df['study_day'] < current_day])
-
-    if actual_new_count != expected_new_count:
-        raise WorkflowException(
-            f"Schedule Validation Failed: Actual New ({actual_new_count}) != Expected New ({expected_new_count})"
-        )
-    if actual_review_count != expected_review_count:
-        raise WorkflowException(
-            f"Schedule Validation Failed: Actual Review ({actual_review_count}) != Expected Review ({expected_review_count})"
-        )
-
-    return schedule_df, expected_new_count, expected_review_count
-
-# --- 5. MAIN WORKFLOW CLASS ---
-
-class AudioRegenerationWorkflow:
-    def __init__(self, input_csv: str, mock_mode: bool):
-        self.input_csv = input_csv
-        self.tts_api = GeminiTTSAPI(mock_mode=mock_mode) 
-        self.pause1 = AudioSegment.silent(duration=PAUSE_L1_MS)
-        self.pause2 = AudioSegment.silent(duration=PAUSE_L2_MS)
-        self.data = self._load_and_validate_input()
-        self._setup_directories()
-
-    def _load_and_validate_input(self) -> pd.DataFrame:
-        """Loads and validates the input CSV file."""
-        if not os.path.exists(self.input_csv):
-            raise FileNotFoundError(f"Input file not found: {self.input_csv}")
-        
-        df = pd.read_csv(self.input_csv)
-        
-        required_cols = ['item_id', 'l1_text', 'l2_text', 'study_day']
-        if not all(col in df.columns for col in required_cols):
-            raise WorkflowException(f"CSV missing required columns: {required_cols}")
-
-        if not df['item_id'].is_unique:
-            raise WorkflowException("CSV item_id column contains duplicate values.")
-            
-        return df
-
-    def _setup_directories(self):
-        """Ensures all required directories exist."""
-        os.makedirs(CACHE_DIR, exist_ok=True)
-        os.makedirs(RAW_PCM_CACHE, exist_ok=True)
-        os.makedirs(MP3_CACHE, exist_ok=True)
-        os.makedirs(OUTPUT_DIR_BASE, exist_ok=True)
-
-    def _check_day_complete(self, day_output_dir: str) -> bool:
-        """Checks if all expected final output files exist for a given day."""
-        required_files = ["workout.mp3", "review.mp3", "reverse.mp3", "schedule.csv"]
-        
-        # Check if the directory exists and contains all required files
-        if not os.path.isdir(day_output_dir):
-            return False
-            
-        return all(os.path.exists(os.path.join(day_output_dir, f)) for f in required_files)
-
-    def run(self, start_day: int, end_day: int):
-        """Main execution loop for a range of days."""
-        mode_str = "MOCKING" if self.tts_api.mock_mode else "REAL (gTTS)"
-        print(f"--- Starting Audio Regeneration Workflow in {mode_str} Mode for Days {start_day} to {end_day} ---")
-        
-        for current_day in range(start_day, end_day + 1):
-            day_output_dir = os.path.join(OUTPUT_DIR_BASE, f"day_{current_day}")
-            print(f"\nProcessing Day {current_day}...")
-            
-            # CHECK 1: Skip if the final files are already present
-            if self._check_day_complete(day_output_dir):
-                print(f"  Day {current_day} SKIPPED: Final output files already exist in {day_output_dir}")
-                continue
-            
+    for day in processed_days:
+        schedule_path = OUTPUT_DIR / f'day_{day}' / 'schedule.csv'
+        if schedule_path.is_file():
             try:
-                # If we get here, the day is incomplete, so we ensure the directory exists and proceed.
-                os.makedirs(day_output_dir, exist_ok=True)
-                self._process_day(current_day, day_output_dir)
-                print(f"Day {current_day} SUCCESS: Output saved to {day_output_dir}")
-                
-            except WorkflowException as e:
-                print(f"Day {current_day} FAILED: {e}")
-                print(f"Cleaning up partial output directory: {day_output_dir}")
-                shutil.rmtree(day_output_dir, ignore_errors=True)
-            
-            except Exception as e:
-                print(f"Day {current_day} CRITICAL FAILURE: {e}")
-                shutil.rmtree(day_output_dir, ignore_errors=True)
-
-        print("\n--- Workflow Complete ---")
-        print(f"Total TTS API Calls (Tier 1 Miss): {self.tts_api._total_tts_api_calls}")
-        print(f"Total RAW PCM Cache Hits (Tier 1 Hit): {self.tts_api._total_raw_pcm_cache_hits}")
-        print(f"Total MP3 Cache Hits (Tier 2 Hit): {self.tts_api._total_mp3_cache_hits}")
-
-
-    def _process_day(self, current_day: int, day_output_dir: str):
-        """Generates the schedule, audio, and exports for a single day."""
-        
-        # 1. Generate Schedule
-        schedule_df, exp_new, exp_review = _generate_review_schedule(self.data, current_day, current_day)
-        schedule_df.to_csv(os.path.join(day_output_dir, "schedule.csv"), index=False)
-        print(f"  Schedule: {len(schedule_df)} total items. New: {exp_new}, Review: {exp_review}")
-
-        # 2. Audio Assembly Setup
-        workout_track = AudioSegment.empty() 
-        review_track = AudioSegment.empty()
-        reverse_track = AudioSegment.empty()
-        
-        expected_total_duration_ms = 0
-        
-        # 3. Assemble Tracks
-        print("  Assembling audio tracks...")
-        for index, row in schedule_df.iterrows():
-            l1_text = row['l1_text']
-            l2_text = row['l2_text']
-
-            # Get Audio Segments (Tier 2 check/generation)
-            l1_audio = self.tts_api.get_speed_adjusted_segment(l1_text, 'L1', L1_SPEED_FACTOR)
-            l2_audio = self.tts_api.get_speed_adjusted_segment(l2_text, 'L2', L2_SPEED_FACTOR)
-
-            # Calculate Expected Duration
-            expected_total_duration_ms += (
-                l1_audio.duration_seconds * 1000 + 
-                PAUSE_L1_MS + 
-                l2_audio.duration_seconds * 1000 + 
-                PAUSE_L2_MS
-            )
-
-            # Assemble Track Segments (5.1)
-            workout_track += l1_audio + self.pause1 + l2_audio + self.pause2
-            review_track += l2_audio + self.pause2 + l1_audio + self.pause1
-            reverse_track += l1_audio + self.pause2 + l2_audio
-        
-        # 4. Audio Duration Validation (4.3)
-        actual_duration_ms = len(workout_track)
-        
-        # Calculate tolerance range
-        lower_bound = expected_total_duration_ms * (1 - VALIDATION_TOLERANCE)
-        upper_bound = expected_total_duration_ms * (1 + VALIDATION_TOLERANCE)
-        
-        if not (lower_bound <= actual_duration_ms <= upper_bound):
-            raise WorkflowException(
-                f"Audio Duration Validation Failed: Actual ({actual_duration_ms:.0f}ms) is outside "
-                f"tolerance ({lower_bound:.0f}ms - {upper_bound:.0f}ms)."
-            )
-        print(f"  Duration Validated: {actual_duration_ms / 1000:.2f}s (Expected: {expected_total_duration_ms / 1000:.2f}s)")
-
-
-        # 5. Export (5.1)
-        export_params = {"format": "mp3", "parameters": ["-q:a", "2"]}
-        
-        print("  Exporting tracks...")
-        workout_track.export(os.path.join(day_output_dir, "workout.mp3"), **export_params)
-        review_track.export(os.path.join(day_output_dir, "review.mp3"), **export_params)
-        reverse_track.export(os.path.join(day_output_dir, "reverse.mp3"), **export_params)
-
-
-# --- 6. SETUP AND SCENARIO TEST ---
-
-def _cleanup_environment():
-    """UTILITY: Removes ALL created directories and test data."""
-    # This function is now only for manual use when a complete reset is needed.
-    print("--- FULL ENVIRONMENT CLEANUP ---")
-    if os.path.exists(OUTPUT_DIR_BASE):
-        shutil.rmtree(OUTPUT_DIR_BASE)
-        print(f"Removed {OUTPUT_DIR_BASE}/")
-    if os.path.exists(CACHE_DIR):
-        shutil.rmtree(CACHE_DIR)
-        print(f"Removed {CACHE_DIR}/")
-    if os.path.exists(INPUT_CSV):
-        os.remove(INPUT_CSV)
-        print(f"Removed {INPUT_CSV}")
-
-def _create_revised_test_data():
-    """Generates the test sentence_pairs.csv with 30 items for 3 days, ONLY if it doesn't exist."""
-    if os.path.exists(INPUT_CSV):
-        print(f"Input file {INPUT_CSV} already exists. Skipping creation.")
-        return
-        
-    data = []
+                df = pd.read_csv(schedule_path)
+                all_past_items.append(df)
+            except pd.errors.EmptyDataError:
+                pass
     
-    for i in range(1, 31):
-        item_id = f"item_{i:02d}"
-        l1 = f"English sentence number {i}."
-        l2 = f"Dansk sætning nummer {i}."
-        study_day = 1 + (i - 1) // 10
-        
-        data.append({'item_id': item_id, 'l1_text': l1, 'l2_text': l2, 'study_day': study_day})
+    if all_past_items:
+        return pd.concat(all_past_items, ignore_index=True)
+    else:
+        return pd.DataFrame(columns=SCHEDULE_COLUMNS)
 
-    df = pd.DataFrame(data)
-    df.to_csv(INPUT_CSV, index=False)
-    print(f"Created test data file: {INPUT_CSV} with {len(df)} items.")
+def _generate_daily_mp3s(day_df: pd.DataFrame, day: int) -> None:
+    """Generates and saves the three required MP3 files for the day."""
+    day_folder = OUTPUT_DIR / f'day_{day}'
+    print(f"  > Generating final MP3 outputs for Day {day}...")
+    
+    # Corrected silence creation using AudioSegment.silent()
+    pause_l1 = AudioSegment.silent(duration=PAUSE_L1_MS) 
+    pause_l2 = AudioSegment.silent(duration=PAUSE_L2_MS) 
+    pause_shadow = AudioSegment.silent(duration=PAUSE_SHADOW_MS)
+
+    workflow_audio = AudioSegment.empty()
+    review_audio = AudioSegment.empty()
+    reverse_audio = AudioSegment.empty()
+
+    for _, row in day_df.iterrows():
+        # 1. Get/Cache Audio Segments
+        l1_segment = _tts_generate_and_cache(row['l1_text'], 'en', is_l2=False)
+        l2_segment = _tts_generate_and_cache(row['l2_text'], 'da', is_l2=True)
+
+        # 2. Build the three distinct audio tracks
+        workflow_audio += l1_segment + pause_l1 + l2_segment + pause_l2
+        review_audio += l2_segment + pause_shadow
+        reverse_audio += l2_segment + pause_l2 + l1_segment + pause_l2
+
+    # 3. Export the final combined tracks
+    workflow_audio.export(day_folder / 'workflow.mp3', format='mp3')
+    review_audio.export(day_folder / 'review.mp3', format='mp3')
+    reverse_audio.export(day_folder / 'reverse.mp3', format='mp3')
+    
+    print(f"  ✅ Successfully generated 3 MP3 files in {day_folder.name}/")
+
+
+def _process_day(
+    day: int, 
+    new_items_df: pd.DataFrame, 
+    processed_days: List[int]
+) -> None:
+    """4. Process Missing Days: Performs core processing for one incomplete day."""
+    day_folder = OUTPUT_DIR / f'day_{day}'
+    day_folder.mkdir(exist_ok=True) 
+
+    print(f"\n--- ⏳ Processing Day {day} (v{WORKFLOW_VERSION}) ---")
+    
+    # 1. Select New Items and Review Items
+    new_count = len(new_items_df)
+    review_count = new_count // REVIEW_RATIO
+    past_items_df = _get_all_past_items(processed_days)
+    
+    if len(past_items_df) > 0 and review_count > 0:
+        review_items_df = past_items_df.sample(n=min(review_count, len(past_items_df)))
+    else:
+        review_items_df = pd.DataFrame(columns=SCHEDULE_COLUMNS)
+
+    print(f"  > New: {new_count} items. Review: {len(review_items_df)} items.")
+
+    # 2. Combine and Interleave (Shuffle)
+    daily_schedule_df = pd.concat([new_items_df, review_items_df], ignore_index=True)
+    daily_schedule_df = daily_schedule_df.sample(frac=1).reset_index(drop=True)
+    
+    # 3. Generate schedule.csv
+    schedule_path = day_folder / 'schedule.csv'
+    daily_schedule_df.to_csv(schedule_path, index=False, columns=SCHEDULE_COLUMNS)
+    print(f"  > Saved daily schedule (Total items: {len(daily_schedule_df)}) to {schedule_path.name}")
+    
+    # 4. Generate MP3s (using the full audio implementation)
+    _generate_daily_mp3s(daily_schedule_df, day)
+    
+    # 5. Validation
+    current_file_count = len([f for f in day_folder.iterdir() if f.is_file() and not f.name.startswith('.')])
+    if current_file_count == EXPECTED_FILE_COUNT:
+        print(f"  ✅ Day {day} processing **SUCCESS**. All {EXPECTED_FILE_COUNT} outputs found.")
+    else:
+        print(f"  ❌ Day {day} processing **FAILED**. Found {current_file_count}/{EXPECTED_FILE_COUNT} files.")
+
+
+# --- Main Execution ---
+
+def run_workflow() -> None:
+    """Orchestrates the four-step application flow."""
+    print(f"## Language Learner Workflow v{WORKFLOW_VERSION} ##")
+    
+    # 1. Load/Generate Master Data
+    master_df = _load_or_generate_master_data(pd.DataFrame())
+
+    # 2. Generate SRS Schedule (Group by day)
+    schedule_by_day = _generate_srs_schedule(master_df)
+    max_day = max(schedule_by_day.keys()) if schedule_by_day else 0
+    
+    all_scheduled_days = set(schedule_by_day.keys())
+    
+    # 3. Determine Days to Process (Declarative Filter)
+    days_to_process = _determine_days_to_process(max_day)
+    
+    processed_days = sorted(list(all_scheduled_days - set(days_to_process)))
+    print(f"Days currently considered 'complete' for review item selection: {processed_days}")
+
+    # 4. Process Missing Days
+    if not days_to_process:
+        print("\n--- ✅ All Scheduled Days Are Complete ---")
+        return
+
+    for day in sorted(days_to_process):
+        if day in schedule_by_day:
+            new_items_df = schedule_by_day[day]
+            _process_day(day, new_items_df, processed_days)
+            
+            current_day_folder = OUTPUT_DIR / f'day_{day}'
+            current_file_count = len([f for f in current_day_folder.iterdir() if f.is_file() and not f.name.startswith('.')])
+            if current_file_count == EXPECTED_FILE_COUNT:
+                 processed_days.append(day)
+                 processed_days = sorted(list(set(processed_days)))
+        else:
+            print(f"Warning: Day {day} was marked for processing but has no new items in master data.")
+
 
 if __name__ == '__main__':
-    
-    print(f"TTS API MOCK_MODE is set to: {MOCK_MODE}")
-
-    # **CRITICAL CHANGE:** We no longer call _cleanup_environment() here.
-    # The cache and output will be preserved for future runs.
-    
-    # Ensure the input data exists (creates it once, skips on subsequent runs)
-    _create_revised_test_data()
-    
-    # Initialize and Run Workflow
-    try:
-        workflow = AudioRegenerationWorkflow(INPUT_CSV, mock_mode=MOCK_MODE)
-        
-        # Run the workflow. It will generate missing days or skip completed ones.
-        # Use a single, comprehensive run command for stability:
-        workflow.run(start_day=1, end_day=3)
-        
-        # Optional: If you wanted to run the full cleanup, you would call:
-        # _cleanup_environment() 
-
-    except (FileNotFoundError, WorkflowException) as e:
-        print(f"\nCRITICAL SETUP ERROR: {e}")
-        print("Workflow cannot proceed.")
+    run_workflow()
