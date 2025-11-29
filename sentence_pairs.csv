@@ -1,61 +1,31 @@
-item_id,w2,w1,l1_text,l2_text,study_day
-1,danish_word_1,english_word_1,This is the English sentence containing english_word_1.,"Dette er den danske sætning, der indeholder danish_word_1.",1
-2,danish_word_2,english_word_2,This is the English sentence containing english_word_2.,"Dette er den danske sætning, der indeholder danish_word_2.",1
-3,danish_word_3,english_word_3,This is the English sentence containing english_word_3.,"Dette er den danske sætning, der indeholder danish_word_3.",1
-4,danish_word_4,english_word_4,This is the English sentence containing english_word_4.,"Dette er den danske sætning, der indeholder danish_word_4.",1
-5,danish_word_5,english_word_5,This is the English sentence containing english_word_5.,"Dette er den danske sætning, der indeholder danish_word_5.",1
-6,danish_word_6,english_word_6,This is the English sentence containing english_word_6.,"Dette er den danske sætning, der indeholder danish_word_6.",1
-7,danish_word_7,english_word_7,This is the English sentence containing english_word_7.,"Dette er den danske sætning, der indeholder danish_word_7.",1
-8,danish_word_8,english_word_8,This is the English sentence containing english_word_8.,"Dette er den danske sætning, der indeholder danish_word_8.",1
-9,danish_word_9,english_word_9,This is the English sentence containing english_word_9.,"Dette er den danske sætning, der indeholder danish_word_9.",1
-10,danish_word_10,english_word_10,This is the English sentence containing english_word_10.,"Dette er den danske sætning, der indeholder danish_word_10.",1
-11,danish_word_11,english_word_11,This is the English sentence containing english_word_11.,"Dette er den danske sætning, der indeholder danish_word_11.",2
-12,danish_word_12,english_word_12,This is the English sentence containing english_word_12.,"Dette er den danske sætning, der indeholder danish_word_12.",2
-13,danish_word_13,english_word_13,This is the English sentence containing english_word_13.,"Dette er den danske sætning, der indeholder danish_word_13.",2
-14,danish_word_14,english_word_14,This is the English sentence containing english_word_14.,"Dette er den danske sætning, der indeholder danish_word_14.",2
-15,danish_word_15,english_word_15,This is the English sentence containing english_word_15.,"Dette er den danske sætning, der indeholder danish_word_15.",2
-16,danish_word_16,english_word_16,This is the English sentence containing english_word_16.,"Dette er den danske sætning, der indeholder danish_word_16.",2
-17,danish_word_17,english_word_17,This is the English sentence containing english_word_17.,"Dette er den danske sætning, der indeholder danish_word_17.",2
-18,danish_word_18,english_word_18,This is the English sentence containing english_word_18.,"Dette er den danske sætning, der indeholder danish_word_18.",2
-19,danish_word_19,english_word_19,This is the English sentence containing english_word_19.,"Dette er den danske sætning, der indeholder danish_word_19.",2
-20,danish_word_20,english_word_20,This is the English sentence containing english_word_20.,"Dette er den danske sætning, der indeholder danish_word_20.",2
-21,danish_word_21,english_word_21,This is the English sentence containing english_word_21.,"Dette er den danske sætning, der indeholder danish_word_21.",3
-22,danish_word_22,english_word_22,This is the English sentence containing english_word_22.,"Dette er den danske sætning, der indeholder danish_word_22.",3
-23,danish_word_23,english_word_23,This is the English sentence containing english_word_23.,"Dette er den danske sætning, der indeholder danish_word_23.",3
-24,danish_word_24,english_word_24,This is the English sentence containing english_word_24.,"Dette er den danske sætning, der indeholder danish_word_24.",3
-25,danish_word_25,english_word_25,This is the English sentence containing english_word_25.,"Dette er den danske sætning, der indeholder danish_word_25.",3
-26,danish_word_26,english_word_26,This is the English sentence containing english_word_26.,"Dette er den danske sætning, der indeholder danish_word_26.",3
-27,danish_word_27,english_word_27,This is the English sentence containing english_word_27.,"Dette er den danske sætning, der indeholder danish_word_27.",3
-28,danish_word_28,english_word_28,This is the English sentence containing english_word_28.,"Dette er den danske sætning, der indeholder danish_word_28.",3
-29,danish_word_29,english_word_29,This is the English sentence containing english_word_29.,"Dette er den danske sætning, der indeholder danish_word_29.",3
-30,danish_word_30,english_word_30,This is the English sentence containing english_word_30.,"Dette er den danske sætning, der indeholder danish_word_30.",3
-31,danish_word_31,english_word_31,This is the English sentence containing english_word_31.,"Dette er den danske sætning, der indeholder danish_word_31.",4
-32,danish_word_32,english_word_32,This is the English sentence containing english_word_32.,"Dette er den danske sætning, der indeholder danish_word_32.",4
-33,danish_word_33,english_word_33,This is the English sentence containing english_word_33.,"Dette er den danske sætning, der indeholder danish_word_33.",4
-34,danish_word_34,english_word_34,This is the English sentence containing english_word_34.,"Dette er den danske sætning, der indeholder danish_word_34.",4
-35,danish_word_35,english_word_35,This is the English sentence containing english_word_35.,"Dette er den danske sætning, der indeholder danish_word_35.",4
-36,danish_word_36,english_word_36,This is the English sentence containing english_word_36.,"Dette er den danske sætning, der indeholder danish_word_36.",4
-37,danish_word_37,english_word_37,This is the English sentence containing english_word_37.,"Dette er den danske sætning, der indeholder danish_word_37.",4
-38,danish_word_38,english_word_38,This is the English sentence containing english_word_38.,"Dette er den danske sætning, der indeholder danish_word_38.",4
-39,danish_word_39,english_word_39,This is the English sentence containing english_word_39.,"Dette er den danske sætning, der indeholder danish_word_39.",4
-40,danish_word_40,english_word_40,This is the English sentence containing english_word_40.,"Dette er den danske sætning, der indeholder danish_word_40.",4
-41,danish_word_41,english_word_41,This is the English sentence containing english_word_41.,"Dette er den danske sætning, der indeholder danish_word_41.",5
-42,danish_word_42,english_word_42,This is the English sentence containing english_word_42.,"Dette er den danske sætning, der indeholder danish_word_42.",5
-43,danish_word_43,english_word_43,This is the English sentence containing english_word_43.,"Dette er den danske sætning, der indeholder danish_word_43.",5
-44,danish_word_44,english_word_44,This is the English sentence containing english_word_44.,"Dette er den danske sætning, der indeholder danish_word_44.",5
-45,danish_word_45,english_word_45,This is the English sentence containing english_word_45.,"Dette er den danske sætning, der indeholder danish_word_45.",5
-46,danish_word_46,english_word_46,This is the English sentence containing english_word_46.,"Dette er den danske sætning, der indeholder danish_word_46.",5
-47,danish_word_47,english_word_47,This is the English sentence containing english_word_47.,"Dette er den danske sætning, der indeholder danish_word_47.",5
-48,danish_word_48,english_word_48,This is the English sentence containing english_word_48.,"Dette er den danske sætning, der indeholder danish_word_48.",5
-49,danish_word_49,english_word_49,This is the English sentence containing english_word_49.,"Dette er den danske sætning, der indeholder danish_word_49.",5
-50,danish_word_50,english_word_50,This is the English sentence containing english_word_50.,"Dette er den danske sætning, der indeholder danish_word_50.",5
-51,danish_word_51,english_word_51,This is the English sentence containing english_word_51.,"Dette er den danske sætning, der indeholder danish_word_51.",6
-52,danish_word_52,english_word_52,This is the English sentence containing english_word_52.,"Dette er den danske sætning, der indeholder danish_word_52.",6
-53,danish_word_53,english_word_53,This is the English sentence containing english_word_53.,"Dette er den danske sætning, der indeholder danish_word_53.",6
-54,danish_word_54,english_word_54,This is the English sentence containing english_word_54.,"Dette er den danske sætning, der indeholder danish_word_54.",6
-55,danish_word_55,english_word_55,This is the English sentence containing english_word_55.,"Dette er den danske sætning, der indeholder danish_word_55.",6
-56,danish_word_56,english_word_56,This is the English sentence containing english_word_56.,"Dette er den danske sætning, der indeholder danish_word_56.",6
-57,danish_word_57,english_word_57,This is the English sentence containing english_word_57.,"Dette er den danske sætning, der indeholder danish_word_57.",6
-58,danish_word_58,english_word_58,This is the English sentence containing english_word_58.,"Dette er den danske sætning, der indeholder danish_word_58.",6
-59,danish_word_59,english_word_59,This is the English sentence containing english_word_59.,"Dette er den danske sætning, der indeholder danish_word_59.",6
-60,danish_word_60,english_word_60,This is the English sentence containing english_word_60.,"Dette er den danske sætning, der indeholder danish_word_60.",6
+item_id,l1_text,l2_text,study_day
+item_01,English sentence number 1.,Dansk sætning nummer 1.,1
+item_02,English sentence number 2.,Dansk sætning nummer 2.,1
+item_03,English sentence number 3.,Dansk sætning nummer 3.,1
+item_04,English sentence number 4.,Dansk sætning nummer 4.,1
+item_05,English sentence number 5.,Dansk sætning nummer 5.,1
+item_06,English sentence number 6.,Dansk sætning nummer 6.,1
+item_07,English sentence number 7.,Dansk sætning nummer 7.,1
+item_08,English sentence number 8.,Dansk sætning nummer 8.,1
+item_09,English sentence number 9.,Dansk sætning nummer 9.,1
+item_10,English sentence number 10.,Dansk sætning nummer 10.,1
+item_11,English sentence number 11.,Dansk sætning nummer 11.,2
+item_12,English sentence number 12.,Dansk sætning nummer 12.,2
+item_13,English sentence number 13.,Dansk sætning nummer 13.,2
+item_14,English sentence number 14.,Dansk sætning nummer 14.,2
+item_15,English sentence number 15.,Dansk sætning nummer 15.,2
+item_16,English sentence number 16.,Dansk sætning nummer 16.,2
+item_17,English sentence number 17.,Dansk sætning nummer 17.,2
+item_18,English sentence number 18.,Dansk sætning nummer 18.,2
+item_19,English sentence number 19.,Dansk sætning nummer 19.,2
+item_20,English sentence number 20.,Dansk sætning nummer 20.,2
+item_21,English sentence number 21.,Dansk sætning nummer 21.,3
+item_22,English sentence number 22.,Dansk sætning nummer 22.,3
+item_23,English sentence number 23.,Dansk sætning nummer 23.,3
+item_24,English sentence number 24.,Dansk sætning nummer 24.,3
+item_25,English sentence number 25.,Dansk sætning nummer 25.,3
+item_26,English sentence number 26.,Dansk sætning nummer 26.,3
+item_27,English sentence number 27.,Dansk sætning nummer 27.,3
+item_28,English sentence number 28.,Dansk sætning nummer 28.,3
+item_29,English sentence number 29.,Dansk sætning nummer 29.,3
+item_30,English sentence number 30.,Dansk sætning nummer 30.,3
