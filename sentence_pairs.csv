@@ -1,19 +1,31 @@
-item_id,w2,w1,l1_text,l2_text,study_day
-1,danish_word_1,english_word_1,This is English sentence 1.,Dette er dansk sætning 1.,1
-2,danish_word_2,english_word_2,This is English sentence 2.,Dette er dansk sætning 2.,1
-3,danish_word_3,english_word_3,This is English sentence 3.,Dette er dansk sætning 3.,1
-4,danish_word_4,english_word_4,This is English sentence 4.,Dette er dansk sætning 4.,1
-5,danish_word_5,english_word_5,This is English sentence 5.,Dette er dansk sætning 5.,1
-6,danish_word_6,english_word_6,This is English sentence 6.,Dette er dansk sætning 6.,2
-7,danish_word_7,english_word_7,This is English sentence 7.,Dette er dansk sætning 7.,2
-8,danish_word_8,english_word_8,This is English sentence 8.,Dette er dansk sætning 8.,2
-9,danish_word_9,english_word_9,This is English sentence 9.,Dette er dansk sætning 9.,2
-10,danish_word_10,english_word_10,This is English sentence 10.,Dette er dansk sætning 10.,2
-11,danish_word_11,english_word_11,This is English sentence 11.,Dette er dansk sætning 11.,2
-12,danish_word_12,english_word_12,This is English sentence 12.,Dette er dansk sætning 12.,3
-13,danish_word_13,english_word_13,This is English sentence 13.,Dette er dansk sætning 13.,3
-14,danish_word_14,english_word_14,This is English sentence 14.,Dette er dansk sætning 14.,3
-15,danish_word_15,english_word_15,This is English sentence 15.,Dette er dansk sætning 15.,3
-16,danish_word_16,english_word_16,This is English sentence 16.,Dette er dansk sætning 16.,3
-17,danish_word_17,english_word_17,This is English sentence 17.,Dette er dansk sætning 17.,3
-18,danish_word_18,english_word_18,This is English sentence 18.,Dette er dansk sætning 18.,3
+W2,W1,L1,L2,StudyDay
+øve,practice,I try to practice guitar scales every day.,Jeg forsøger at øve guitar skalaer hver dag.,1
+pension,retirement,He took early retirement last year to travel.,Han gik tidligt på pension sidste år for at rejse.,1
+forbedre,improve,I want to improve my skills in spontaneous jamming.,Jeg ønsker at forbedre mine evner i spontan jamming.,1
+bøf,steak,"My favorite meal is a thick, well-seasoned ribeye steak.","Mit yndlingsmåltid er en tyk, velkrydret ribeye bøf.",1
+dagligvare,grocery,We need to buy basic groceries for the week.,Vi er nødt til at købe basale dagligvarer til ugen.,1
+tryghed,security,"After retiring, financial security is very important.",Efter at have trukket mig tilbage er økonomisk tryghed meget vigtig.,2
+akkord,chord,The guitarist played a complex diminished chord.,Guitaristen spillede en kompleks formindsket akkord.,2
+mangle,lack,I realize I am missing one of my essential kitchen tools.,"Jeg er klar over, at jeg mangler et af mine essentielle køkkenredskaber.",2
+tilpasning,adaptation,Successful improvisation relies on quick adaptation.,Succesfuld improvisation afhænger af hurtig tilpasning.,2
+indkøb,shopping,I will handle the shopping for the household today.,Jeg tager mig af indkøbene til husholdningen i dag.,2
+mæt,full,The high-fat diet keeps me feeling full for hours.,Den fedtrige kost holder me mæt i timevis.,2
+guitarkasse,guitar case,I store my vintage instrument safely in its guitar case.,Jeg opbevarer mit vintage instrument sikkert i guitarkassen.,3
+spare,save,We decided to save money for a big summer vacation.,Vi besluttede at spare penge op til en stor sommerferie.,3
+ærlig,honest,I need you to be honest with me about the results.,"Jeg har brug for, at du er ærlig over for mig omkring resultaterne.",3
+stemning,mood,"The blues music created a powerful, soulful mood.","Bluesmusikken skabte en stærk, sjælfuld stemning.",3
+træning,training,I focus on weight training several times a week.,Jeg fokuserer på vægttræning flere gange ugentligt.,3
+vente,wait,"We will have to wait for the bus, it's running late.","Vi bliver nødt til at vente på bussen, den er forsinket.",3
+tilfældighed,chance,Musical inspiration often happens by chance or accident.,Musisk inspiration sker ofte ved tilfældighed eller uheld.,4
+udfordring,challenge,The new lifestyle is proving to be a nutritional challenge.,Den nye livsstil viser sig at være en ernæringsmæssig udfordring.,4
+aftale,agreement,We made an agreement to meet next Tuesday at noon.,Vi lavede en aftale om at mødes næste tirsdag middag.,4
+ønske,wish,I wish I could play the guitar just like that master.,"Jeg ønsker, at jeg kunne spille guitar ligesom den mester.",4
+rolig,calm,"After years of working, retirement should be a calm phase.",Efter mange års arbejde burde pensionisttilværelsen være en rolig fase.,4
+frasering,phrasing,Good improvisation is all about melodic phrasing.,God improvisation handler om melodisk frasering.,4
+smør,butter,I add a tablespoon of butter to my coffee every morning.,Jeg tilføjer en spiseskefuld smør til min kaffe hver morgen.,4
+arbejdsplads,workplace,"I miss my old workplace, but not the stress.","Jeg savner min gamle arbejdsplads, men ikke stresset.",5
+spørge,ask,"If you are unsure, you must ask the receptionist.","Hvis du er usikker, skal du spørge receptionisten.",5
+teknik,technique,Mastering the slide guitar technique takes many hours.,At mestre slide guitar teknikken tager mange timer.,5
+resultat,result,The test results showed a positive change in blood work.,Testresultaterne viste en positiv ændring i blodprøverne.,5
+plads,space,Is there enough space left in the car for this box?,Er der plads nok tilbage i bilen for denne kasse?,5
+glemme,forget,Please don't forget your guitar picks before you leave.,"Glem venligst ikke dine guitarplektre, før du tager af sted.",5
