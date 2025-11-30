@@ -3,13 +3,14 @@ import shutil
 import pandas as pd
 from pathlib import Path
 
-# IMPORTANT: Ensure language_learner.py is in the same directory!
+# IMPORTANT: Import the main execution function from the application script.
 try:
-    from language_learner import LanguageLearnerApp, WorkflowException
-except ImportError:
-    print("FATAL: Could not import LanguageLearnerApp. Ensure language_learner.py is in this directory.")
+    # This imports the 'main' function and aliases it to 'run_language_learner_workflow'
+    from language_learner import main as run_language_learner_workflow
+except ImportError as e:
+    # Adjusted the error message to reflect the expected import: 'main' function
+    print(f"FATAL: Could not import the main function from language_learner.py. Error: {e}")
     exit(1)
-
 
 # --- Global Test Configuration ---
 TEST_MASTER_CSV = 'sentence_pairs.csv' # Updated to remove the 'test_' prefix

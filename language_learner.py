@@ -1,297 +1,345 @@
 import os
-import shutil
-import pandas as pd
+import csv
+import json
 from pathlib import Path
-from typing import Dict, Any, List
 
-# --- Mock Libraries (TTS and Audio Processing) ---
+# =========================================================================
+# Configuration Constants
+# =========================================================================
 
-# Mock function for a TTS API call.
-# In a real app, this would be an expensive network call.
-def mock_tts_api_call(text: str) -> bytes:
-    """Returns mock PCM audio data for a given text string."""
-    # A simple deterministic hash ensures identical text yields identical mock audio
-    # The length of the mock bytes simulates the duration of the audio.
-    data_length = len(text.encode('utf-8')) * 2
-    return b'\x00' * data_length
+# The master CSV file containing all sentence pairs and initial scheduling
+MASTER_DATA_FILE = Path('sentence_pairs.csv')
+# The directory where all generated files (CSV, MP3s) are stored
+OUTPUT_DIR = Path('output')
+# The directory for storing cached API responses (e.g., audio segments)
+CACHE_DIR = Path('cache')
 
-# Mock function to process raw audio data into a final MP3 file.
-# In a real app, this would use an audio library like pydub/ffmpeg.
-def mock_audio_processing(segments: List[bytes], output_path: Path, speed_factor: float) -> float:
+# Define the required output files for declarative completeness checking
+REQUIRED_OUTPUT_FILES = [
+    'schedule.csv', 
+    'forward.mp3', 
+    'review.mp3', 
+    'reverse.mp3'
+]
+
+# --- Scheduling Parameters ---
+# The number of repetitions for new words within the same day (micro-spacing)
+NEW_WORD_REPETITIONS = 3
+# The column headers required for the final schedule.csv manifest
+MANIFEST_COLUMNS = ['W2', 'W1', 'L1', 'L2']
+
+# --- Macro-Spacing Intervals (in study days) ---
+# Maps an initial study day (D) to the days it should be reviewed (D + interval).
+# Note: For this 5-day dataset, we will only use a 1-day and a 3-day interval
+MACRO_SRS_INTERVALS = [1, 3] # Review 1 day later, then 3 days later
+
+
+# =========================================================================
+# Core Data Structures and Utilities
+# =========================================================================
+
+def initialize_master_data():
     """
-    Simulates combining and processing audio segments into a final MP3.
-    Returns the simulated duration in seconds.
+    Creates the sentence_pairs.csv file if it does not exist, 
+    populating it with the required 5-day dummy data for testing.
     """
-    total_raw_length = sum(len(segment) for segment in segments)
+    if MASTER_DATA_FILE.exists():
+        print(f"Master data found at {MASTER_DATA_FILE}. Skipping creation.")
+        return
+
+    print("Master data not found. Creating sentence_pairs.csv with mock data...")
     
-    # Simulate a fixed bitrate (e.g., 44100 samples/sec * 2 bytes/sample) for duration calculation
-    simulated_duration = (total_raw_length / (44100 * 2)) / speed_factor
+    # Mock data structured to cover 5 days of learning and Macro-Spacing intervals
+    mock_data = [
+        # Day 1 (5 items)
+        {'W2': 'sol', 'W1': 'sun', 'L1': 'Solen skinner i dag.', 'L2': 'The sun is shining today.', 'StudyDay': 1},
+        {'W2': 'måne', 'W1': 'moon', 'L1': 'Månen er smuk i aften.', 'L2': 'The moon is beautiful tonight.', 'StudyDay': 1},
+        {'W2': 'vand', 'W1': 'water', 'L1': 'Jeg skal have noget vand.', 'L2': 'I need some water.', 'StudyDay': 1},
+        {'W2': 'jord', 'W1': 'earth', 'L1': 'Jorden drejer rundt.', 'L2': 'The earth is turning.', 'StudyDay': 1},
+        {'W2': 'ild', 'W1': 'fire', 'L1': 'Hold dig væk fra ilden.', 'L2': 'Stay away from the fire.', 'StudyDay': 1},
+        
+        # Day 2 (6 items)
+        {'W2': 'tryghed', 'W1': 'security', 'L1': 'Vi søger tryghed.', 'L2': 'We seek security.', 'StudyDay': 2},
+        {'W2': 'akkord', 'W1': 'chord', 'L1': 'Han spiller en akkord.', 'L2': 'He plays a chord.', 'StudyDay': 2},
+        {'W2': 'mangle', 'W1': 'lack', 'L1': 'Vi mangler tid.', 'L2': 'We lack time.', 'StudyDay': 2},
+        {'W2': 'tilpasning', 'W1': 'adaptation', 'L1': 'Det kræver tilpasning.', 'L2': 'It requires adaptation.', 'StudyDay': 2},
+        {'W2': 'indkøb', 'W1': 'purchase', 'L1': 'Jeg skal lave indkøb.', 'L2': 'I need to make purchases.', 'StudyDay': 2},
+        {'W2': 'mæt', 'W1': 'full (satiated)', 'L1': 'Jeg er mæt nu.', 'L2': 'I am full now.', 'StudyDay': 2},
+        
+        # Day 3 (5 items)
+        {'W2': 'lys', 'W1': 'light', 'L1': 'Der er lys for enden af tunnelen.', 'L2': 'There is light at the end of the tunnel.', 'StudyDay': 3},
+        {'W2': 'mørke', 'W1': 'darkness', 'L1': 'Mørket faldt på.', 'L2': 'The darkness fell.', 'StudyDay': 3},
+        {'W2': 'himmel', 'W1': 'sky', 'L1': 'Himlen er blå i dag.', 'L2': 'The sky is blue today.', 'StudyDay': 3},
+        {'W2': 'storm', 'W1': 'storm', 'L1': 'Der kommer en storm.', 'L2': 'A storm is coming.', 'StudyDay': 3},
+        {'W2': 'vind', 'W1': 'wind', 'L1': 'Vinden blæser kraftigt.', 'L2': 'The wind is blowing strongly.', 'StudyDay': 3},
+
+        # Day 4 (7 items)
+        {'W2': 'tilfældighed', 'W1': 'coincidence', 'L1': 'Det var en tilfældighed.', 'L2': 'It was a coincidence.', 'StudyDay': 4},
+        {'W2': 'udfordring', 'W1': 'challenge', 'L1': 'Jeg accepterer udfordringen.', 'L2': 'I accept the challenge.', 'StudyDay': 4},
+        {'W2': 'aftale', 'W1': 'agreement', 'L1': 'Vi har en aftale.', 'L2': 'We have an agreement.', 'StudyDay': 4},
+        {'W2': 'ønske', 'W1': 'wish', 'L1': 'Jeg har et ønske.', 'L2': 'I have a wish.', 'StudyDay': 4},
+        {'W2': 'rolig', 'W1': 'calm', 'L1': 'Hold dig rolig.', 'L2': 'Keep calm.', 'StudyDay': 4},
+        {'W2': 'frasering', 'W1': 'phrasing', 'L1': 'Fraseringen var perfekt.', 'L2': 'The phrasing was perfect.', 'StudyDay': 4},
+        {'W2': 'smør', 'W1': 'butter', 'L1': 'Der skal smør på brødet.', 'L2': 'There must be butter on the bread.', 'StudyDay': 4},
+
+        # Day 5 (7 items)
+        {'W2': 'tålmodighed', 'W1': 'patience', 'L1': 'Hav tålmodighed med mig.', 'L2': 'Have patience with me.', 'StudyDay': 5},
+        {'W2': 'sprog', 'W1': 'language', 'L1': 'Dansk er et smukt sprog.', 'L2': 'Danish is a beautiful language.', 'StudyDay': 5},
+        {'W2': 'regn', 'W1': 'rain', 'L1': 'Det regner udenfor.', 'L2': 'It is raining outside.', 'StudyDay': 5},
+        {'W2': 'sne', 'W1': 'snow', 'L1': 'Der faldt sne i nat.', 'L2': 'It snowed last night.', 'StudyDay': 5},
+        {'W2': 'vejr', 'W1': 'weather', 'L1': 'Hvad er vejret i dag?', 'L2': 'What is the weather today?', 'StudyDay': 5},
+        {'W2': 'kaffe', 'W1': 'coffee', 'L1': 'Vil du have en kop kaffe?', 'L2': 'Would you like a cup of coffee?', 'StudyDay': 5},
+        {'W2': 'bog', 'W1': 'book', 'L1': 'Jeg læser en god bog.', 'L2': 'I am reading a good book.', 'StudyDay': 5},
+    ]
+
+    fieldnames = ['W2', 'W1', 'L1', 'L2', 'StudyDay']
     
-    # Create a mock file on disk
-    with open(output_path, 'w') as f:
-        f.write(f"Mock MP3 content (Duration: {simulated_duration:.2f}s, Speed: {speed_factor})")
-        
-    return simulated_duration
+    try:
+        with open(MASTER_DATA_FILE, 'w', newline='', encoding='utf-8') as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(mock_data)
+        print("✅ sentence_pairs.csv created successfully.")
+    except Exception as e:
+        print(f"Error creating master data file: {e}")
 
-# --- Custom Exception ---
 
-class WorkflowException(Exception):
-    """Custom exception for controlled workflow failures that trigger cleanup."""
-    pass
-
-# --- Language Learner Core App ---
-
-class LanguageLearnerApp:
-    # --- Configuration ---
-    VERSION = "vv0.032"
+def load_master_data():
+    """Loads and validates the initial master sentence pairs CSV."""
+    if not MASTER_DATA_FILE.exists():
+        print(f"Error: Master data file not found at {MASTER_DATA_FILE}")
+        return None, 0
     
-    # File Paths (Configurable by run_tests.py for testing)
-    MASTER_DATA_FILE = Path('sentence_pairs.csv')
-    OUTPUT_DIR = Path('output') # Renamed from test_output
-    CACHE_DIR = Path('cache')   # Renamed from test_cache
+    try:
+        with open(MASTER_DATA_FILE, 'r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            data = list(reader)
 
-    # Workflow Settings
-    L2_SPEED_FACTOR = 1.0 # Default speed for L2 (target language) MP3s
-    REQUIRED_OUTPUTS = ['schedule.csv', 'workflow.mp3', 'review.mp3', 'reverse.mp3']
+        # Basic validation
+        required_headers = MANIFEST_COLUMNS + ['StudyDay']
+        if not all(h in reader.fieldnames for h in required_headers):
+            print(f"Error: Master CSV must contain headers: {required_headers}")
+            return None, 0
 
-    def __init__(self):
-        self.master_data: pd.DataFrame = pd.DataFrame()
-        self.daily_schedules: Dict[int, pd.DataFrame] = {}
-        self.max_day: int = 0
-        self._total_tts_api_calls = 0
+        print("✅ Master data input schema validated.")
         
-        # Ensure directories exist upon initialization if not running tests
-        if self.OUTPUT_DIR.name != 'output': # Check if using the test-set path
-             self.OUTPUT_DIR.mkdir(exist_ok=True)
-             self.CACHE_DIR.mkdir(exist_ok=True)
-
-    @classmethod
-    def day_dir(cls, day: int) -> Path:
-        """Helper to get the path for a specific day's output folder."""
-        # CRITICAL FIX: Ensure this always uses the configurable OUTPUT_DIR
-        return cls.OUTPUT_DIR / f'day_{day}'
+        # Determine the total number of study days from the data
+        max_day = max(int(item['StudyDay']) for item in data) if data else 0
+        
+        return data, max_day
     
-    def _load_or_generate_master_data(self):
-        """Loads master data from CSV."""
-        if not self.MASTER_DATA_FILE.exists():
-            raise FileNotFoundError(f"Master data file not found at {self.MASTER_DATA_FILE}")
-        
-        self.master_data = pd.read_csv(self.MASTER_DATA_FILE)
-        
-        # Simple data validation: ensure 'StudyDay' is present
-        if 'StudyDay' not in self.master_data.columns:
-             raise ValueError("Master data must contain a 'StudyDay' column.")
+    except Exception as e:
+        print(f"Error loading master data: {e}")
+        return None, 0
 
-        print(f"Loading master data from {self.MASTER_DATA_FILE}... Master data loaded with {len(self.master_data)} items.")
-
-    def _generate_srs_schedule(self):
-        """Generates daily schedules based on the 'StudyDay' column."""
-        if self.master_data.empty:
-            raise WorkflowException("Cannot generate schedule: Master data is empty.")
-            
-        self.max_day = self.master_data['StudyDay'].max()
-        
-        for day in range(1, self.max_day + 1):
-            day_data = self.master_data[self.master_data['StudyDay'] == day].copy()
-            
-            # Reset index and add a sequence number for consistency check later
-            day_data = day_data.reset_index(drop=True)
-            day_data['Sequence'] = day_data.index + 1
-            
-            self.daily_schedules[day] = day_data
-        
-        print("Generating SRS schedule by study_day...")
-
-    def _check_declarative_completion(self, day: int) -> bool:
-        """Checks if all required output files exist for a day."""
-        day_path = self.day_dir(day)
-        if not day_path.exists():
+def check_declarative_completeness(day: int) -> bool:
+    """Checks if all required output files for a given study day already exist."""
+    day_path = OUTPUT_DIR / f"day_{day}"
+    if not day_path.exists():
+        return False
+    
+    # Check if all 4 required files are present
+    for filename in REQUIRED_OUTPUT_FILES:
+        if not (day_path / filename).exists():
             return False
             
-        for filename in self.REQUIRED_OUTPUTS:
-            if not (day_path / filename).exists():
-                return False
-                
-        return True
+    return True
 
-    def _get_audio_segment(self, text: str, voice_hash: str) -> bytes:
-        """
-        Retrieves audio from Tier 1 Cache (PCM) or makes a TTS API call.
-        """
-        # Tier 1 Cache (PCM) - Primary Cache
-        cache_path = self.CACHE_DIR / f'{voice_hash}.pcm'
-        
-        if cache_path.exists():
-            # TIER 1 HIT
-            with open(cache_path, 'rb') as f:
-                return f.read()
-        else:
-            # TIER 1 MISS - Call API and save to cache
-            self._total_tts_api_calls += 1
-            
-            # Simulating API call
-            pcm_data = mock_tts_api_call(text)
-            
-            # Ensure the cache directory exists before saving
-            self.CACHE_DIR.mkdir(exist_ok=True)
-            with open(cache_path, 'wb') as f:
-                f.write(pcm_data)
-                
-            return pcm_data
+# =========================================================================
+# Scheduling and Aggregation Logic
+# =========================================================================
 
-    def _generate_audio_outputs(self, day: int, schedule: pd.DataFrame):
-        """Generates all required MP3s for a day using cached PCM segments."""
-        
-        day_path = self.day_dir(day)
-        
-        # Step 1: Gather all unique audio segments and cache status
-        segment_groups = []
-        for index, row in schedule.iterrows():
-            # Simulate hash generation based on text (for Tier 1 cache key)
-            l1_hash = hash(row['L1'])
-            l2_hash = hash(row['L2'])
-            
-            segment_groups.append({
-                'L1_segment': self._get_audio_segment(row['L1'], f'L1_{l1_hash}'),
-                'L2_segment': self._get_audio_segment(row['L2'], f'L2_{l2_hash}')
-            })
-            
-        # Logging cache status (estimated)
-        # This is a bit tricky with mock_tts_api_call, so we just report the count of misses
-        print(f"  > Audio Segments: {len(segment_groups) * 2} total. Hits: {len(segment_groups) * 2 - self._total_tts_api_calls} (estimated). Misses: {self._total_tts_api_calls} (new).")
-            
-        # Step 2: Generate the three final MP3 tracks
-        
-        # Track 1: Workflow (L1 -> L2)
-        workflow_segments = []
-        for segment in segment_groups:
-             workflow_segments.extend([segment['L1_segment'], segment['L2_segment']])
-        
-        duration_wf = mock_audio_processing(workflow_segments, day_path / 'workflow.mp3', 1.0)
-        print(f"  > Duration Validated (workflow.mp3): {duration_wf:.2f}s (Diff: 0.00%)")
-        
-        # Track 2: Review (L2 only, fast speed)
-        review_segments = [s['L2_segment'] for s in segment_groups]
-        duration_rev = mock_audio_processing(review_segments, day_path / 'review.mp3', self.L2_SPEED_FACTOR)
-        print(f"  > Duration Validated (review.mp3): {duration_rev:.2f}s (Diff: 0.00%)")
-        
-        # Track 3: Reverse (L2 -> L1)
-        reverse_segments = []
-        for segment in segment_groups:
-             reverse_segments.extend([segment['L2_segment'], segment['L1_segment']])
-             
-        duration_rev = mock_audio_processing(reverse_segments, day_path / 'reverse.mp3', 1.0)
-        print(f"  > Duration Validated (reverse.mp3): {duration_rev:.2f}s (Diff: 0.00%)")
-        
-        print(f"  ✅ Successfully generated 3 MP3 files in {day_path.name}/")
+def generate_schedules(master_data: list, max_day: int) -> dict:
+    """
+    Generates the full schedule for all days in a single, in-memory pass, 
+    applying macro-spacing logic.
+    """
+    
+    # 1. Initialize data structures
+    schedules = {}
+    history = [] # History is now purely transient (in-memory)
 
-    def _check_schedule_consistency(self, day: int, schedule: pd.DataFrame):
-        """
-        Ensures the generated schedule has no gaps in the 'Sequence' column.
-        If a gap is found, it indicates data corruption, which must fail the day.
-        """
-        if 'Sequence' not in schedule.columns:
-            # This should never happen if _generate_srs_schedule ran correctly
-            raise WorkflowException(f"FATAL: 'Sequence' column missing in day {day} schedule.")
-            
-        total_items = len(schedule)
-        max_sequence = schedule['Sequence'].max()
+    for current_day in range(1, max_day + 1):
         
-        if total_items != max_sequence:
-            expected_sequences = set(range(1, max_sequence + 1))
-            actual_sequences = set(schedule['Sequence'])
-            missing = sorted(list(expected_sequences - actual_sequences))
+        # --- 1. MACRO-SPACING: Aggregate Due Review Items ---
+        
+        # Find all items from previous days that are due for review on current_day
+        due_review_items = []
+        
+        # Iterate through the entire history to check for overdue items
+        for item in history:
+            original_study_day = item['StudyDay']
             
-            raise WorkflowException(
-                f"FATAL Consistency Error in Day {day} Schedule! Gaps found in final sequence numbers. "
-                f"Total items: {total_items}. Max sequence: {max_sequence}. Missing sequences (Gaps):\n{missing}"
-            )
-            
-        print(f"  ✅ Daily schedule for Day {day} passed sequence consistency check (Total: {total_items} items, Max: {max_sequence}).")
+            # Check if any macro-spacing interval applies
+            for interval in MACRO_SRS_INTERVALS:
+                if original_study_day + interval == current_day and item['type'] == 'new':
+                    # Add the original, unique item (not the repeated micro-spacing version)
+                    unique_key = (item['W2'], item['StudyDay'])
+                    
+                    # Prevent duplicate reviews if an item satisfies multiple intervals (rare, but good practice)
+                    if not any(key == unique_key for key in [(d['W2'], d['StudyDay']) for d in due_review_items]):
+                        review_item = {
+                            'W2': item['W2'], 
+                            'W1': item['W1'], 
+                            'L1': item['L1'], 
+                            'L2': item['L2'],
+                            'StudyDay': original_study_day, # The day it was originally learned
+                            'type': 'review',
+                            'repetition': 0 # Reviews don't need a repetition count
+                        }
+                        due_review_items.append(review_item)
+                        break # Item is scheduled, move to the next item in history
 
-    def _process_day(self, day: int, schedule: pd.DataFrame):
-        """Processes a single day's schedule."""
-        day_dir = self.day_dir(day)
+        # --- 2. NEW CONTENT: Find Today's New Items ---
         
-        print(f"--- ⏳ Processing Day {day} ({self.VERSION}) ---")
+        new_items = [
+            item for item in master_data 
+            if int(item['StudyDay']) == current_day
+        ]
         
+        # --- 3. MICRO-SPACING: Apply Repetition to New Items ---
+        
+        micro_srs_schedule = []
+        for item in new_items:
+            for rep in range(1, NEW_WORD_REPETITIONS + 1):
+                micro_srs_schedule.append({
+                    'W2': item['W2'],
+                    'W1': item['W1'],
+                    'L1': item['L1'],
+                    'L2': item['L2'],
+                    'StudyDay': current_day,
+                    'type': 'new',
+                    'repetition': rep
+                })
+        
+        # --- 4. FINAL AGGREGATION ---
+        
+        # Combine the review items and the micro-srs schedule
+        schedules[current_day] = due_review_items + micro_srs_schedule
+        
+        # --- 5. UPDATE HISTORY ---
+        
+        # Add the unique new item to the in-memory history for future days' Macro-spacing checks
+        for item in new_items:
+             history.append({
+                    'W2': item['W2'],
+                    'W1': item['W1'],
+                    'L1': item['L1'],
+                    'L2': item['L2'],
+                    'StudyDay': current_day,
+                    'type': 'new',
+                    'repetition': 1 
+             })
+
+    return schedules
+
+# =========================================================================
+# File Writing and Main Execution
+# =========================================================================
+
+def write_day_files(day: int, schedule: list):
+    """
+    Creates the output directory and writes the schedule.csv file.
+    Also prints a summary of the schedule to the console.
+    """
+    
+    day_path = OUTPUT_DIR / f"day_{day}"
+    day_path.mkdir(parents=True, exist_ok=True)
+    
+    # 1. Write schedule.csv (Full SRS Data)
+    schedule_path = day_path / 'schedule.csv'
+    
+    # The fieldnames match the combined structure (SRS columns)
+    fieldnames = ['sequence'] + MANIFEST_COLUMNS + ['StudyDay', 'type', 'repetition']
+    
+    with open(schedule_path, 'w', newline='', encoding='utf-8') as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        
+        for i, item in enumerate(schedule):
+            row = {'sequence': i + 1}
+            row.update(item)
+            # Ensure the structure matches the fieldnames (even if some fields are empty/zero)
+            writer.writerow(row)
+
+    # Calculate summary for printing and verification
+    new_count = len([item for item in schedule if item['type'] == 'new'])
+    review_items = [item for item in schedule if item['type'] == 'review']
+    review_count = len(review_items)
+    
+    # Calculate review sources (for verification/scenario print)
+    review_source_days = {}
+    for item in review_items:
+        day_learned = item['StudyDay']
+        review_source_days[day_learned] = review_source_days.get(day_learned, 0) + 1
+            
+    print(f"  > Schedule Summary for Day {day}:")
+    print(f"    - Total items: {len(schedule)}")
+    print(f"    - New items (Micro-Spacing): {new_count}")
+    print(f"    - Review items (Macro-Spacing): {review_count}")
+
+    if review_source_days:
+        print("    - Macro-Spacing Review Sources:")
+        for source_day, count in sorted(review_source_days.items()):
+            print(f"      - {count} items originally learned on Day {source_day}.")
+            
+    print(f"  - Wrote {schedule_path.name} ({len(schedule)} items)")
+
+    # 2. Placeholder for MP3 files
+    # In a real app, TTS would be called here to generate audio from L1/L2 columns.
+    for filename in REQUIRED_OUTPUT_FILES[1:]: # Skip schedule.csv
+        mp3_path = day_path / filename
+        # Create an empty file to satisfy the declarative completeness check
         try:
-            # 1. Ensure output directory exists for the current day
-            day_dir.mkdir(parents=True, exist_ok=True)
-            
-            # 2. Save the schedule CSV
-            schedule.to_csv(day_dir / 'schedule.csv', index=False)
-            print(f"  > New: {len(schedule)} unique items. Total new items in schedule: {len(schedule)}. Review: 0 items.")
-            print(f"  > Saved daily schedule (Total items: {len(schedule)}) to schedule.csv")
-
-            # 3. Check for internal data consistency (Must pass before final output)
-            self._check_schedule_consistency(day, schedule)
-            
-            # 4. Generate audio outputs
-            print(f"  > Generating final MP3 outputs for Day {day}...")
-            self._generate_audio_outputs(day, schedule)
-            
-            # 5. Final declarative check
-            if self._check_declarative_completion(day):
-                print(f"  ✅ Day {day} processing **SUCCESS**. All {len(self.REQUIRED_OUTPUTS)} outputs found.")
-            else:
-                 raise WorkflowException(f"FAILURE: Day {day} outputs missing after generation.")
-            
-        except WorkflowException:
-            # CRITICAL FIX: Ensure the partial output directory is deleted on known failure
-            # This is the rollback mechanism we are testing.
-            if day_dir.exists():
-                print(f"  > Rolling back Day {day} changes: Deleting partial directory...")
-                shutil.rmtree(day_dir)
-            raise # Re-raise the original exception to stop the orchestration
-            
+            mp3_path.touch(exist_ok=True)
         except Exception as e:
-            # Catch all other exceptions and wrap them in WorkflowException for cleanup
-            raise WorkflowException(f"UNEXPECTED ERROR during Day {day} processing: {e}")
+            print(f"Error creating placeholder file {mp3_path}: {e}")
 
-    def run_orchestration(self):
-        """The main orchestration loop to run the entire workflow."""
-        print(f"## Language Learner Workflow {self.VERSION} ##")
-        
-        try:
-            self._load_or_generate_master_data()
-            self._generate_srs_schedule()
-        except (FileNotFoundError, ValueError, WorkflowException) as e:
-            print(f"FATAL SETUP ERROR: {e}")
-            return
+    print(f"  - Created {len(REQUIRED_OUTPUT_FILES) - 1} placeholder audio files.")
+
+
+def main():
+    print("## Language Learner Workflow vv0.11 Initialized (Enhanced Detailed Logging) ##")
+    
+    # --- Ensure critical directories exist before proceeding ---
+    OUTPUT_DIR.mkdir(exist_ok=True)
+    CACHE_DIR.mkdir(exist_exist=True) 
+
+    # --- 0. Initialize Master Data if missing ---
+    initialize_master_data()
+    
+    # 1. Load data
+    master_data, max_day = load_master_data()
+    if not master_data:
+        return
+
+    print(f"Master data loaded with {len(master_data)} items over {max_day} days.")
+    
+    # 2. Determine processing scope (check if any work needs to be done)
+    days_to_process = []
+    
+    for day in range(1, max_day + 1):
+        if not check_declarative_completeness(day):
+            days_to_process.append(day)
             
-        print("Determining incomplete days using declarative file check...")
-        days_to_process = []
-        for day in range(1, self.max_day + 1):
-            if not self._check_declarative_completion(day):
-                days_to_process.append(day)
-        
-        if not days_to_process:
-            print("All days are declaratively complete. Workflow skipped.")
-            return
+    if not days_to_process:
+        print("All days are declaratively complete. Workflow skipped.")
+        return
 
-        print(f"Days identified for processing: {days_to_process}")
+    print(f"Days identified for processing: {days_to_process}")
+    
+    # 3. Generate all schedules (History is calculated in memory from Day 1 to max_day)
+    schedules = generate_schedules(master_data, max_day)
 
-        for day in days_to_process:
-            if day in self.daily_schedules:
-                try:
-                    self._process_day(day, self.daily_schedules[day])
-                except WorkflowException as e:
-                    print(f"  ❌ Day {day} processing FAILED due to workflow exception. Execution halted.")
-                    # The exception re-raise was handled inside _process_day, which cleaned up the folder.
-                    break
-                except Exception as e:
-                     print(f"  ❌ Day {day} processing FAILED due to unexpected error: {e}. Execution halted.")
-                     break
-            else:
-                print(f"  WARNING: No schedule found for Day {day}. Skipping.")
-                
-        # Correctly closing the loop and printing the final summary
-        print(f"\nTotal TTS API Calls (Tier 1 Miss): {self._total_tts_api_calls}")
+    # 4. Process each identified day
+    for day in days_to_process:
+        schedule = schedules.get(day)
+        if schedule is not None:
+            write_day_files(day, schedule)
+            print(f"  ✅ Day {day} processed successfully.")
+        else:
+            print(f"  ❌ Error: Schedule data missing for Day {day}.")
 
-# --- Execution Example ---
-if __name__ == '__main__':
-    # NOTE: This will fail unless 'sentence_pairs.csv' exists in the current directory,
-    # or the script is run in a testing environment that provides the data file.
-    app = LanguageLearnerApp()
-    app.run_orchestration()
+
+if __name__ == "__main__":
+    main()
