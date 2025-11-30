@@ -1,24 +1,3 @@
-# ----------------------------------------------------------------------
-# Application Outputs (NFR-6)
-# Exclude the entire output directory containing the daily schedule files
-# and the generated audio tracks (workflow.mp3, review.mp3, reverse.mp3).
-# ----------------------------------------------------------------------
-output/
-
-# ----------------------------------------------------------------------
-# Audio Cache (NFR-6)
-# Exclude the cache directory containing all hash-keyed, speed-adjusted 
-# L2 audio segments to minimize repository size.
-# ----------------------------------------------------------------------
-cache/
-
-# ----------------------------------------------------------------------
-# Python Environment
-# Exclude standard Python environment files and folders.
-# ----------------------------------------------------------------------
-__pycache__/
-.venv/
-venv/
-*.pyc
-*.egg-info
-.python-version
+# Output and Cache Folders (Generated files)
+Days/
+tts_cache/
