@@ -54,7 +54,7 @@ class Config:
     """Consolidated configuration settings for the Language Learning workflow."""
 
     # --- TTS Execution Switch (TOGGLE THIS LINE TO CHANGE BEHAVIOR) ---
-    USE_REAL_TTS: bool = True # Set this to True to use gTTS and Pydub
+    USE_REAL_TTS: bool = True 
     
     # --- File Paths ---
     SOURCE_FILE: Path = Path('sentence_pairs.csv')
@@ -71,7 +71,6 @@ class Config:
 
     # --- Declarative Schema & Keys ---
     CONTENT_KEYS: List[str] = ['W2', 'W1', 'L1', 'L2'] 
-    MANIFEST_COLUMNS: List[str] = CONTENT_KEYS + ['StudyDay', 'type', 'repetition']
 
     # --- Language & Localization Parameters ---
     TARGET_LANG_CODE_FULL: str = 'da-DK'
@@ -79,8 +78,12 @@ class Config:
     TARGET_LANG_CODE_SHORT: str = 'da'
     BASE_LANG_CODE_SHORT: str = 'en'
 
+    # 🛑 V2.2 FIX: Reversing L1/L2 roles to compensate for internal script bug
     LANGUAGE_ROLE_MAP: Dict[str, str] = {
-        'W2': 'TARGET', 'W1': 'BASE', 'L2': 'TARGET', 'L1': 'BASE',
+        'W2': 'TARGET', # Danish word (Correct)
+        'W1': 'BASE',   # English word (Correct)
+        'L1': 'TARGET', # English sentence (Force TARGET role to get BASE language)
+        'L2': 'BASE',   # Danish sentence (Force BASE role to get TARGET language)
     }
     
     LANG_CODE_RESOLVER: Dict[str, str] = {
@@ -99,16 +102,16 @@ class Config:
     
     PAUSE_DURATIONS: Dict[str, float] = {
         'SP': 3.0,  # Explicit Delimiting Pause
-        'W2': 0.25, # Implicit Pause duration AFTER the segment
-        'W1': 0.25, 
-        'L2': 0.5,   
-        'L1': 0.5    
+        'W2': 0.25, # Implicit Pause duration AFTER the segment (Target Word)
+        'W1': 0.25, # Implicit Pause duration AFTER the segment (Base Word)
+        'L2': 0.5,   # Implicit Pause duration AFTER the segment (Target Sentence)
+        'L1': 0.5    # Implicit Pause duration AFTER the segment (Base Sentence)
     }
         
     AUDIO_TEMPLATES: Dict[str, str] = {
-        "workout": "SP W2 W1 L2 L1", 
-        "review_forward": "SP W2 W1 L1 L2",
-        "review_reverse": "SP W2 W1 L2 L1", 
+        "workout": "SP W2 W1 L2 L1", # Target Word, Base Word, Target Sentence, Base Sentence
+        "review_forward": "SP W2 W1 L1 L2", # Target Word, Base Word, Base Sentence, Target Sentence
+        "review_reverse": "SP W2 W1 L2 L1", # Target Word, Base Word, Target Sentence, Base Sentence
     }
     TEMPLATE_DELIMITER: str = ' '
     
@@ -124,11 +127,7 @@ class Config:
     SEGMENT_ACTIONS['SP'] = 'EXPLICIT_PAUSE'
 
     # --- Integrity Check Parameters ---
-    # Duration for a single content segment (e.g., W2, L1) in seconds.
-    # Note: In REAL mode, this is just an ESTIMATE for the integrity check.
     MOCK_CONTENT_DURATION_SEC: float = 1.0 
-    
-    # The maximum allowable difference between the expected and actual audio duration in seconds.
     DURATION_TOLERANCE_SEC: float = 0.15 
 
 
@@ -140,13 +139,14 @@ def initialize_source_data() -> None:
     """Creates the mock sentence_pairs.csv file if it does not exist."""
     
     mock_data = [
-        {'W2': 'sol', 'W1': 'sun', 'L1': 'Solen skinner i dag.', 'L2': 'The sun is shining today.', 'StudyDay': 1},
-        {'W2': 'måne', 'W1': 'moon', 'L1': 'Månen er smuk i aften.', 'L2': 'The moon is beautiful tonight.', 'StudyDay': 1},
-        {'W2': 'vand', 'W1': 'water', 'L1': 'Jeg skal have noget vand.', 'L2': 'I need some water.', 'StudyDay': 1},
-        {'W2': 'tryghed', 'W1': 'security', 'L1': 'Vi søger tryghed.', 'L2': 'We seek security.', 'StudyDay': 2},
-        {'W2': 'akkord', 'W1': 'chord', 'L1': 'Han spiller en akkord.', 'L2': 'He plays a chord.', 'StudyDay': 2},
-        {'W2': 'lys', 'W1': 'light', 'L1': 'Der er lys for enden af tunnelen.', 'L2': 'There er light at the end of the tunnel.', 'StudyDay': 3},
-        {'W2': 'mørke', 'W1': 'darkness', 'L1': 'Mørket faldt på.', 'L2': 'The darkness fell.', 'StudyDay': 3},
+        # W2 (Target Word), W1 (Base Word), L1 (Base Sentence), L2 (Target Sentence)
+        {'W2': 'sol', 'W1': 'sun', 'L1': 'The sun is shining today.', 'L2': 'Solen skinner i dag.', 'StudyDay': 1},
+        {'W2': 'måne', 'W1': 'moon', 'L1': 'The moon is beautiful tonight.', 'L2': 'Månen er smuk i aften.', 'StudyDay': 1},
+        {'W2': 'vand', 'W1': 'water', 'L1': 'I need some water.', 'L2': 'Jeg skal have noget vand.', 'StudyDay': 1},
+        {'W2': 'tryghed', 'W1': 'security', 'L1': 'We seek security.', 'L2': 'Vi søger tryghed.', 'StudyDay': 2},
+        {'W2': 'akkord', 'W1': 'chord', 'L1': 'He plays a chord.', 'L2': 'Han spiller en akkord.', 'StudyDay': 2},
+        {'W2': 'lys', 'W1': 'light', 'L1': 'There er light at the end of the tunnel.', 'L2': 'Der er lys for enden af tunnelen.', 'StudyDay': 3},
+        {'W2': 'mørke', 'W1': 'darkness', 'L1': 'The darkness fell.', 'L2': 'Mørket faldt på.', 'StudyDay': 3},
     ]
 
     fieldnames = Config.CONTENT_KEYS + ['StudyDay']
@@ -163,8 +163,6 @@ def initialize_source_data() -> None:
 def run_environment_check() -> Tuple[bool, bool, bool]:
     """
     Checks for required directories, dependencies, and master data file existence/creation.
-    
-    Returns: Tuple[bool, bool, bool] - (use_real_tts_mode, use_real_concat_mode, is_initial_run)
     """
     print("--- 🔬 Starting Environment and Dependency Check ---")
     
@@ -236,8 +234,10 @@ def get_tts_lang_code(segment_key: str, use_real: bool) -> str:
     language_role = Config.LANGUAGE_ROLE_MAP.get(segment_key)
     
     if not use_real:
+        # Use FULL code for mock hashing consistency
         return Config.LANG_CODE_RESOLVER.get(language_role, Config.BASE_LANG_CODE_FULL)
 
+    # Use SHORT code for real gTTS API
     if language_role == 'TARGET':
         return Config.TARGET_LANG_CODE_SHORT
     return Config.BASE_LANG_CODE_SHORT
@@ -263,7 +263,7 @@ def mock_google_tts(text: str, language_code: str, cache_hits: List[int], api_ca
 # --- B. Real gTTS Method ---
 def real_gtts_api(text: str, language_code: str, cache_hits: List[int], api_calls: List[int]) -> Path:
     """Calls the gTTS library to generate actual audio and saves it to the cache."""
-    # Need the full code for consistent cache key generation
+    # Need the full code for consistent cache key generation (used for get_cache_path)
     full_lang_code = Config.LANG_CODE_RESOLVER.get('TARGET' if language_code == Config.TARGET_LANG_CODE_SHORT else 'BASE')
     real_file_path = get_cache_path(text, full_lang_code)
 
@@ -275,7 +275,6 @@ def real_gtts_api(text: str, language_code: str, cache_hits: List[int], api_call
     api_calls[0] += 1
     
     try:
-        # print(f"    - API CALL: Generating audio for '{text[:20]}...' in {language_code}")
         tts = gTTS(text=text, lang=language_code, slow=False)
         tts.save(real_file_path)
         
@@ -302,11 +301,9 @@ def get_segment_lang_code_full(segment_key: str) -> str:
 def pre_cache_day_segments(full_schedule: List[ScheduleItem], use_real_tts_mode: bool) -> None:
     """
     STEP 1: Isolates I/O side-effects by pre-caching all unique audio segments.
-    (v1.9: Outputs summary instead of per-segment details)
     """
     print(f"\n  - Pre-Caching unique audio segments...")
     
-    # Use mutable list to pass by reference (for counting)
     cache_hits = [0]
     api_calls = [0]
     
@@ -322,19 +319,21 @@ def pre_cache_day_segments(full_schedule: List[ScheduleItem], use_real_tts_mode:
     for item in full_schedule:
         for key in Config.CONTENT_KEYS:
             text_content = item.get(key)
+            
+            # Use the FULL language code for the unique segment tuple, as this is used for hashing.
             full_lang_code = get_segment_lang_code_full(key) 
             segment_tuple = (text_content, full_lang_code)
             
             if text_content and segment_tuple not in unique_segments:
                 try:
-                    tts_lang_code = get_tts_lang_code(key, use_real_tts_mode)
+                    # Use the SHORT language code for the TTS function if in real mode
+                    tts_lang_code = get_tts_lang_code(key, use_real_tts_mode) 
                     tts_func(text_content, tts_lang_code, cache_hits, api_calls)
                     unique_segments.add(segment_tuple)
                 except (ValueError, IOError) as e:
                     print(f"    ❌ Error during pre-caching segment ('{text_content}'): {e}")
-                    unique_segments.add(segment_tuple) # Still add to set to avoid reprocessing
+                    unique_segments.add(segment_tuple) 
     
-    # V1.9 CONCISE SUMMARY OUTPUT
     total_unique = len(unique_segments)
     
     print(f"  - Pre-Caching complete. {total_unique} unique segments processed.")
@@ -350,8 +349,6 @@ def generate_audio_from_template(
     """
     Calculates expected duration and executes real audio concatenation 
     using Pydub, or mocks it based on the configuration.
-
-    Returns: Tuple[Path, float]: The output path and the expected duration in seconds.
     """
     
     output_filename_base = Config.AUDIO_FILE_MAP[template_key]
@@ -360,12 +357,11 @@ def generate_audio_from_template(
     
     expected_duration_sec: float = 0.0
     
-    is_real_mode = use_real_concat_mode # Use the result from the environment check
+    is_real_mode = use_real_concat_mode 
 
     if is_real_mode:
         final_audio = AudioSegment.empty()
     else:
-        # Create a mock file right away if not in real mode
         output_path.touch(exist_ok=True)
 
 
@@ -383,7 +379,6 @@ def generate_audio_from_template(
                 full_lang_code = get_segment_lang_code_full(segment_key)
                 cached_path = get_cache_path(text_content, full_lang_code)
                 
-                # Duration calculation (always run)
                 initial_content_duration = Config.MOCK_CONTENT_DURATION_SEC
                 expected_duration_sec += initial_content_duration
                 
@@ -393,21 +388,14 @@ def generate_audio_from_template(
                         try:
                             segment_audio = AudioSegment.from_mp3(cached_path)
                             final_audio += segment_audio
-                            # print(f"      -> CONCAT AUDIO: {segment_key} (Duration: {len(segment_audio) / 1000:.2f}s)")
                             
-                            # Use actual duration for a more precise check, adjusting the mocked estimate
                             expected_duration_sec -= initial_content_duration 
                             expected_duration_sec += len(segment_audio) / 1000.0
                             
                         except Exception as e:
-                            # print(f"      ❌ CONCAT FAILED for {segment_key}: {e}")
-                            # Add a 0.1s silence for a missing file to prevent crashes
                             final_audio += AudioSegment.silent(duration=100)
-                            # print(f"      ⚠️ CONCAT ERROR: Added 0.1s silence for {segment_key}.")
                     else:
-                        # Add a 0.1s silence for a missing file to prevent crashes
                         final_audio += AudioSegment.silent(duration=100)
-                        # print(f"      ⚠️ CACHE MISS: Added 0.1s silence for {segment_key}.")
                 
                 # Add duration for the implicit pause
                 if segment_key in Config.PAUSE_DURATIONS:
@@ -417,7 +405,6 @@ def generate_audio_from_template(
                     if is_real_mode:
                         duration_ms = int(pause_sec * 1000)
                         final_audio += AudioSegment.silent(duration=duration_ms)
-                        # print(f"      -> CONCAT PAUSE (Implicit): {pause_sec}s")
 
 
             # --- Handle Explicit Pause Segments ---
@@ -429,7 +416,6 @@ def generate_audio_from_template(
                     if is_real_mode:
                         duration_ms = int(pause_sec * 1000)
                         final_audio += AudioSegment.silent(duration=duration_ms)
-                        # print(f"      -> CONCAT PAUSE (Explicit): {pause_sec}s")
                     
     # 2. Final Export / Mock Generation
     print("\n  - Performing final file operation...")
@@ -472,7 +458,6 @@ def verify_audio_duration_integrity(
         
         if REAL_CONCAT_AVAILABLE:
             try:
-                # Measure the actual duration using Pydub
                 audio = AudioSegment.from_mp3(file_path)
                 actual_duration_sec = len(audio) / 1000.0
                 
@@ -493,9 +478,7 @@ def verify_audio_duration_integrity(
 
 
 def is_day_complete(day: int) -> bool:
-    """
-    Checks if all required output files exist for a given day.
-    """
+    """Checks if all required output files exist for a given day."""
     day_path = Config.OUTPUT_ROOT_DIR / f"day_{day}"
     if not day_path.exists():
         return False
@@ -512,7 +495,6 @@ def is_day_complete(day: int) -> bool:
 
 def load_and_validate_source_data() -> Tuple[List[Dict[str, Any]], int]:
     if not Config.SOURCE_FILE.exists():
-        # This should theoretically not happen if run_environment_check was successful
         print(f"❌ Error: Master data file not found at {Config.SOURCE_FILE}")
         return [], 0
     try:
@@ -651,7 +633,7 @@ def process_day(day: int, full_schedule: List[ScheduleItem], use_real_tts_mode: 
 
 
 def main_workflow():
-    print("## 📚 Language Learner Schedule Generator (v1.9 - Full Audio Pipeline) ##")
+    print("## 📚 Language Learner Schedule Generator (v2.2 - Forced Fix) ##")
     
     # --- STEP 1: Run Environment Check & Get Flags ---
     use_real_tts_mode, use_real_concat_mode, is_initial_run = run_environment_check()
