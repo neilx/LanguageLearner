@@ -138,7 +138,6 @@ class Config:
 
 def initialize_source_data() -> None:
     """Creates the mock sentence_pairs.csv file if it does not exist."""
-    # NOTE: This function is now only called from run_environment_check()
     
     mock_data = [
         {'W2': 'sol', 'W1': 'sun', 'L1': 'Solen skinner i dag.', 'L2': 'The sun is shining today.', 'StudyDay': 1},
@@ -245,14 +244,16 @@ def get_tts_lang_code(segment_key: str, use_real: bool) -> str:
 
 
 # --- A. Mock TTS Method ---
-def mock_google_tts(text: str, language_code: str) -> Path:
-    """Mocks the API call by creating an empty file in the cache (Conceptual Mock)."""
+def mock_google_tts(text: str, language_code: str, cache_hits: List[int], api_calls: List[int]) -> Path:
+    """Mocks the API call by checking and optionally creating an empty file in the cache."""
     mock_file_path = get_cache_path(text, language_code)
 
-    if not mock_file_path.exists():
+    if mock_file_path.exists():
+        cache_hits[0] += 1
+    else:
         try:
             mock_file_path.touch(exist_ok=True)
-            print(f"    - CACHE CREATED (Mock): {mock_file_path.name}")
+            api_calls[0] += 1
         except OSError as e:
             raise IOError(f"TTS Mock Error creating cache file: {e}")
             
@@ -260,28 +261,30 @@ def mock_google_tts(text: str, language_code: str) -> Path:
 
 
 # --- B. Real gTTS Method ---
-def real_gtts_api(text: str, language_code: str) -> Path:
+def real_gtts_api(text: str, language_code: str, cache_hits: List[int], api_calls: List[int]) -> Path:
     """Calls the gTTS library to generate actual audio and saves it to the cache."""
     # Need the full code for consistent cache key generation
     full_lang_code = Config.LANG_CODE_RESOLVER.get('TARGET' if language_code == Config.TARGET_LANG_CODE_SHORT else 'BASE')
     real_file_path = get_cache_path(text, full_lang_code)
 
     if real_file_path.exists():
+        cache_hits[0] += 1
         return real_file_path
     
-    print(f"    - API CALL: Generating audio for '{text[:20]}...' in {language_code}")
+    # Cache Miss: Initiate API call
+    api_calls[0] += 1
     
     try:
+        # print(f"    - API CALL: Generating audio for '{text[:20]}...' in {language_code}")
         tts = gTTS(text=text, lang=language_code, slow=False)
         tts.save(real_file_path)
         
-        print(f"    - CACHE CREATED (Real Audio): {real_file_path.name}")
         return real_file_path
         
     except Exception as e:
         if "No audio for this text" in str(e):
             print(f"    ❌ gTTS Error: Skipping segment due to content issue ({text[:20]}...).")
-            real_file_path.touch(exist_ok=True) 
+            real_file_path.touch(exist_ok=True) # Create empty file to cache the failure
             return real_file_path
         raise IOError(f"Real TTS API Error generating/caching file: {e}")
 
@@ -297,14 +300,21 @@ def get_segment_lang_code_full(segment_key: str) -> str:
 
 
 def pre_cache_day_segments(full_schedule: List[ScheduleItem], use_real_tts_mode: bool) -> None:
-    """STEP 1: Isolates I/O side-effects by pre-caching all unique audio segments."""
+    """
+    STEP 1: Isolates I/O side-effects by pre-caching all unique audio segments.
+    (v1.9: Outputs summary instead of per-segment details)
+    """
     print(f"\n  - Pre-Caching unique audio segments...")
     
+    # Use mutable list to pass by reference (for counting)
+    cache_hits = [0]
+    api_calls = [0]
+    
     if use_real_tts_mode:
-        tts_func: Callable[[str, str], Path] = real_gtts_api
+        tts_func = lambda text, lang, h, m: real_gtts_api(text, lang, h, m)
         print("  -- MODE: Using REAL gTTS API --")
     else:
-        tts_func: Callable[[str, str], Path] = mock_google_tts
+        tts_func = lambda text, lang, h, m: mock_google_tts(text, lang, h, m)
         print("  -- MODE: Using MOCK TTS --")
 
     unique_segments = set()
@@ -318,13 +328,17 @@ def pre_cache_day_segments(full_schedule: List[ScheduleItem], use_real_tts_mode:
             if text_content and segment_tuple not in unique_segments:
                 try:
                     tts_lang_code = get_tts_lang_code(key, use_real_tts_mode)
-                    tts_func(text_content, tts_lang_code)
+                    tts_func(text_content, tts_lang_code, cache_hits, api_calls)
                     unique_segments.add(segment_tuple)
                 except (ValueError, IOError) as e:
                     print(f"    ❌ Error during pre-caching segment ('{text_content}'): {e}")
-                    unique_segments.add(segment_tuple) 
-
-    print(f"  - Pre-Caching complete. {len(unique_segments)} unique segments identified.")
+                    unique_segments.add(segment_tuple) # Still add to set to avoid reprocessing
+    
+    # V1.9 CONCISE SUMMARY OUTPUT
+    total_unique = len(unique_segments)
+    
+    print(f"  - Pre-Caching complete. {total_unique} unique segments processed.")
+    print(f"    > Cache Summary: Hits: {cache_hits[0]}, Misses/API Calls: {api_calls[0]}")
 
 
 def generate_audio_from_template(
@@ -379,20 +393,21 @@ def generate_audio_from_template(
                         try:
                             segment_audio = AudioSegment.from_mp3(cached_path)
                             final_audio += segment_audio
-                            print(f"      -> CONCAT AUDIO: {segment_key} (Duration: {len(segment_audio) / 1000:.2f}s)")
+                            # print(f"      -> CONCAT AUDIO: {segment_key} (Duration: {len(segment_audio) / 1000:.2f}s)")
+                            
                             # Use actual duration for a more precise check, adjusting the mocked estimate
                             expected_duration_sec -= initial_content_duration 
                             expected_duration_sec += len(segment_audio) / 1000.0
                             
                         except Exception as e:
-                            print(f"      ❌ CONCAT FAILED for {segment_key}: {e}")
+                            # print(f"      ❌ CONCAT FAILED for {segment_key}: {e}")
                             # Add a 0.1s silence for a missing file to prevent crashes
                             final_audio += AudioSegment.silent(duration=100)
-                            print(f"      ⚠️ CONCAT ERROR: Added 0.1s silence for {segment_key}.")
+                            # print(f"      ⚠️ CONCAT ERROR: Added 0.1s silence for {segment_key}.")
                     else:
                         # Add a 0.1s silence for a missing file to prevent crashes
                         final_audio += AudioSegment.silent(duration=100)
-                        print(f"      ⚠️ CACHE MISS: Added 0.1s silence for {segment_key}.")
+                        # print(f"      ⚠️ CACHE MISS: Added 0.1s silence for {segment_key}.")
                 
                 # Add duration for the implicit pause
                 if segment_key in Config.PAUSE_DURATIONS:
@@ -402,7 +417,7 @@ def generate_audio_from_template(
                     if is_real_mode:
                         duration_ms = int(pause_sec * 1000)
                         final_audio += AudioSegment.silent(duration=duration_ms)
-                        print(f"      -> CONCAT PAUSE (Implicit): {pause_sec}s")
+                        # print(f"      -> CONCAT PAUSE (Implicit): {pause_sec}s")
 
 
             # --- Handle Explicit Pause Segments ---
@@ -414,7 +429,7 @@ def generate_audio_from_template(
                     if is_real_mode:
                         duration_ms = int(pause_sec * 1000)
                         final_audio += AudioSegment.silent(duration=duration_ms)
-                        print(f"      -> CONCAT PAUSE (Explicit): {pause_sec}s")
+                        # print(f"      -> CONCAT PAUSE (Explicit): {pause_sec}s")
                     
     # 2. Final Export / Mock Generation
     print("\n  - Performing final file operation...")
@@ -493,7 +508,7 @@ def is_day_complete(day: int) -> bool:
             
     return True
 
-# ... (Remaining utility functions: load_and_validate_source_data, generate_full_repetition_schedule, write_manifest_csv remain the same) ...
+# --- Data Loading and Schedule Generation (Unchanged) ---
 
 def load_and_validate_source_data() -> Tuple[List[Dict[str, Any]], int]:
     if not Config.SOURCE_FILE.exists():
@@ -636,7 +651,7 @@ def process_day(day: int, full_schedule: List[ScheduleItem], use_real_tts_mode: 
 
 
 def main_workflow():
-    print("## 📚 Language Learner Schedule Generator (v1.8 - Full Audio Pipeline) ##")
+    print("## 📚 Language Learner Schedule Generator (v1.9 - Full Audio Pipeline) ##")
     
     # --- STEP 1: Run Environment Check & Get Flags ---
     use_real_tts_mode, use_real_concat_mode, is_initial_run = run_environment_check()
