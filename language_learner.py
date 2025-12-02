@@ -77,23 +77,22 @@ class Config:
     # --- Declarative Schema & Keys ---
     CONTENT_KEYS: List[str] = ['W2', 'W1', 'L1', 'L2'] 
 
-    # --- Language & Localization Parameters (STANDARDIZED TO FULL CODES) ---
-    TARGET_LANG_CODE_FULL: str = 'da-DK' 
-    BASE_LANG_CODE_FULL: str = 'en-GB' 
-
+    # --- Language & Localization Parameters (simplified) ---
+    TARGET_LANG_CODE: str = 'da'
+    BASE_LANG_CODE: str = 'en-GB'
+    
     # IMMUTABLE ROLES (L1: BASE, L2: TARGET) - This is the desired final state.
     LANGUAGE_ROLE_MAP: Dict[str, str] = {
-        'W2': 'TARGET', 
-        'W1': 'BASE',   
-        'L1': 'BASE',   
-        'L2': 'TARGET', 
+        'W2': 'TARGET',
+        'W1': 'BASE',
+        'L1': 'BASE',
+        'L2': 'TARGET',
     }
-    
+
     LANG_CODE_RESOLVER: Dict[str, str] = {
-        'TARGET': TARGET_LANG_CODE_FULL,
-        'BASE': BASE_LANG_CODE_FULL
+        'TARGET': TARGET_LANG_CODE,
+        'BASE': BASE_LANG_CODE
     }
-    
     # --- Repetition Parameters (omitted for brevity) ---
     MICRO_REPETITIONS_COUNT: int = 3
     REVIEW_REPETITION_COUNT: int = 0
@@ -234,18 +233,16 @@ def get_cache_path(text: str, language_code: str) -> Path:
     return Config.TTS_CACHE_DIR / f"{content_hash}{Config.TTS_CACHE_FILE_EXT}"
 
 
-def get_segment_lang_code_full(segment_key: str) -> str:
-    """Helper to get the FULL language code, used for hashing and template logging."""
+def get_segment_lang_code(segment_key: str) -> str:
+    """Returns the fixed language code for a given segment key."""
     language_role = Config.LANGUAGE_ROLE_MAP.get(segment_key)
-    # This line uses the immutable map to resolve the full code
-    return Config.LANG_CODE_RESOLVER.get(language_role, Config.BASE_LANG_CODE_FULL) 
-
+    return Config.LANG_CODE_RESOLVER.get(language_role, Config.BASE_LANG_CODE)
 
 # --- A. Mock TTS Method ---
-def mock_google_tts(text: str, language_code_full: str, cache_hits: List[int], api_calls: List[int]) -> Path:
+def mock_google_tts(text: str, language_code: str, cache_hits: List[int], api_calls: List[int]) -> Path:
     """Mocks the API call by checking and optionally creating an empty file in the cache."""
-    # Use the FULL code directly for the cache key
-    mock_file_path = get_cache_path(text, language_code_full)
+    # Use the language_code for the cache key
+    mock_file_path = get_cache_path(text, language_code)
 
     if mock_file_path.exists():
         cache_hits[0] += 1
@@ -260,29 +257,20 @@ def mock_google_tts(text: str, language_code_full: str, cache_hits: List[int], a
 
 
 # --- B. Real gTTS Method ---
-def real_gtts_api(text: str, language_code_full: str, cache_hits: List[int], api_calls: List[int]) -> Path:
+def real_gtts_api(text: str, language_code: str, cache_hits: List[int], api_calls: List[int]) -> Path:
     """Calls the gTTS library to generate actual audio and saves it to the cache."""
-    # 1. Cache Path: Use the FULL code for consistent hashing (e.g., 'da-DK')
-    real_file_path = get_cache_path(text, language_code_full)
+    # 1. Cache Path: Use the language code for consistent hashing (e.g., 'da' or 'en-GB')
+    real_file_path = get_cache_path(text, language_code)
 
     if real_file_path.exists():
         cache_hits[0] += 1
         return real_file_path
     
     api_calls[0] += 1
-    
-    # V2.8 FINAL FIX: Convert FULL code to SHORT code for gTTS API compatibility
-    if language_code_full == Config.TARGET_LANG_CODE_FULL:
-        tts_lang_code = 'da'  # Danish requires the short code
-    elif language_code_full == Config.BASE_LANG_CODE_FULL:
-        tts_lang_code = 'en'  # English also simplified to short code
-    else:
-        tts_lang_code = language_code_full # Fallback
-
 
     try:
         # 3. API Call: Use the SHORT code for the language parameter
-        tts = gTTS(text=text, lang=tts_lang_code, slow=False)
+        tts = gTTS(text=text, lang=language_code, slow=False)
         tts.save(real_file_path)
         
         return real_file_path
@@ -323,7 +311,7 @@ def pre_cache_day_segments(full_schedule: List[ScheduleItem], use_real_tts_mode:
         for key in Config.CONTENT_KEYS:
             text_content = item.get(key)
             
-            full_lang_code = get_segment_lang_code_full(key) 
+            full_lang_code = get_segment_lang_code(key) 
             segment_tuple = (text_content, full_lang_code)
             
             if text_content and segment_tuple not in unique_segments:
@@ -376,7 +364,7 @@ def generate_audio_from_template(
             # --- Handle Content Segments ---
             if action_type == 'CONTENT':
                 text_content = item.get(segment_key, "")
-                full_lang_code = get_segment_lang_code_full(segment_key)
+                full_lang_code = get_segment_lang_code(segment_key)
                 cached_path = get_cache_path(text_content, full_lang_code)
                 
                 initial_content_duration = Config.MOCK_CONTENT_DURATION_SEC
@@ -712,9 +700,9 @@ if __name__ == "__main__":
 # v2.7:
 #   - Change: Attempted to standardize language codes by using 'da-DK' and 'en-GB' across the config (Incomplete).
 #
-# v2.8 (Final):
+# v2.8:
 #   - Confirmed FIX: Syntax error from previous attempt was corrected.
 #   - Confirmed FIX: Content mapping (`L1`=English/Base, `L2`=Danish/Target) is correct.
-#   - CRITICAL FIX: Modified `real_gtts_api` to use the **short** ISO-639-1 language codes ('da' and 'en') for the gTTS call, resolving the `Language not supported: da-DK` error.
 #   - Template Change: Updated 'workout' template to "SP W2 W1 L1 L2 L2 L2 L2 L2" as requested.
+#   - Simplify language codes: remove full/short distinction; always use 'da' and 'en-GB' consistently in TTS and schedule generation.
 # =========================================================================
