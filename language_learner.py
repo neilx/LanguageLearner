@@ -684,25 +684,8 @@ if __name__ == "__main__":
 # =========================================================================
 # 📜 REVISION HISTORY
 # =========================================================================
-# v2.2:
-#   - Change: Modified LANGUAGE_ROLE_MAP (L1 -> TARGET, L2 -> BASE). (COMPENSATORY FIX)
-#
-# v2.4:
-#   - Change: Major Refactor: Swapped L1 and L2 assignment within generate_full_repetition_schedule.
-#   - Change: Reverted both the v2.2/v2.3 compensatory fixes.
-#
-# v2.5:
-#   - Change: Removed logic forcing Day 1 reprocessing when all days were complete.
-#
-# v2.6:
+# v0.101   - Change: Removed logic forcing Day 1 reprocessing when all days were complete.
 #   - Change: Updated internal mock data to create a better test fixture.
-#
-# v2.7:
-#   - Change: Attempted to standardize language codes by using 'da-DK' and 'en-GB' across the config (Incomplete).
-#
-# v2.8:
-#   - Confirmed FIX: Syntax error from previous attempt was corrected.
-#   - Confirmed FIX: Content mapping (`L1`=English/Base, `L2`=Danish/Target) is correct.
-#   - Template Change: Updated 'workout' template to "SP W2 W1 L1 L2 L2 L2 L2 L2" as requested.
-#   - Simplify language codes: remove full/short distinction; always use 'da' and 'en-GB' consistently in TTS and schedule generation.
-# =========================================================================
+# v0.102
+#  Fixed overly complex language codes to just use a single language code. currently da and en-GB
+
