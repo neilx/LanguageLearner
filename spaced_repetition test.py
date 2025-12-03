@@ -1,20 +1,20 @@
-# spaced_repetition_concat_test_with_verification.py
+# spaced_repetition_concat_filtered.py
 
 from collections import Counter
 import pprint
 
 templates = {
     # Format: (Audio Sequence String, Repetitions: Number)
-    
+
     # *Where W means Word and L means Language ad 1 and 2 mean base and target languages"
     # The 'workout' template has a sequence of "SP W2 W1 L1 L2 L2 L2 L2 L2" and 2 repetitions.
-    "workout": ("SP W2 W1 L1 L2 L2 L2 L2 L2", 2), 
+    "workout": ("SP W2 W1 L1 L2 L2 L2 L2 L2", 2),
     
     # The 'review_forward' template has a sequence of "SP W2 W1 L1 L2" and 1 repetition.
-    "review_forward": ("SP W2 W1 L1 L2", 1), 
+    "review_forward": ("SP W2 W1 L1 L2", 1),
     
     # The 'review_reverse' template has a sequence of "SP W2 W1 L2 L1" and 1 repetition.
-    "review_reverse": ("SP W2 W1 L2 L1", 1), 
+    "review_reverse": ("SP W2 W1 L2 L1", 1),
 }
 TEMPLATE_DELIMITER: str = ' '
 
@@ -51,20 +51,41 @@ data_to_review = [
     {"word": "Lugubrious", "study_day": 3, }
 ]
 
-# Create a mapping from word key to the full data dictionary for later schedule assembly
-# This allows us to look up the full item data from the word key.
-data_lookup = {item["word"]: item for item in data_to_review}
-all_words = list(data_lookup.keys()) # All unique word keys
-n = len(all_words) # number of unique words/items
+# --- MODIFICATION START ---
 
-# Full intervals
+# 1. Find the highest study_day
+highest_study_day = 0
+if data_to_review:
+    # Use max() with a key for efficiency
+    highest_study_day = max(item['study_day'] for item in data_to_review)
+
+print(f"Highest study_day found: {highest_study_day}")
+
+# 2. Filter the data_to_review list based on the highest study_day
+# This new list replaces the original data_to_review for scheduling
+filtered_data_to_review = [
+    item for item in data_to_review if item['study_day'] == highest_study_day
+]
+
+print(f"Number of items filtered with study_day {highest_study_day}: {len(filtered_data_to_review)}")
+print("Filtered words:")
+print([item['word'] for item in filtered_data_to_review])
+
+# Use the filtered data for all subsequent steps
+data_lookup = {item["word"]: item for item in filtered_data_to_review}
+all_words = list(data_lookup.keys()) # All unique word keys from the filtered set
+n = len(all_words) # number of unique words/items in the filtered set
+
+# --- MODIFICATION END ---
+
+# Full intervals (unchanged)
 intervals = [0, 3, 7, 14, 30, 60, 120, 240]
 
-print(f"The total count of dictionary items is: {n}")
-x = templates["workout"][1] # how often each word must appear in the schedule
+print(f"\nThe total count of dictionary items being scheduled is: {n}")
+x = templates["workout"][1] # how often each word must appear in the schedule (x=2)
 
 # Use only the first x intervals
-use_intervals = intervals[:x]
+use_intervals = intervals[:x] # [0, 3]
 
 arrays = {}
 
@@ -81,7 +102,7 @@ for item_position, word in enumerate(all_words, 1):
         arrays.setdefault(idx, []).append(word)
 
 # Print the arrays by index
-print("Arrays by index (now containing words):")
+print("\nArrays by index (now containing words from filtered set):")
 for key in sorted(arrays):
     print(f"Index {key}: {arrays[key]}")
 
@@ -90,7 +111,7 @@ concatenated = []
 for key in sorted(arrays):
     concatenated.extend(arrays[key])
 
-print("\nConcatenated output (words):")
+print("\nConcatenated output (words filtered by highest study_day):")
 print(concatenated)
 
 # Verification function now checks for word count
@@ -114,7 +135,7 @@ for word_key in concatenated:
     schedule.append(data_lookup[word_key])
 
 print("\n---")
-print("Generated Schedule Array:")
+print("Generated Schedule Array (Filtered Data Only):")
 pprint.pprint(schedule)
 print("---")
 
