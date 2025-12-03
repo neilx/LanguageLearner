@@ -54,20 +54,20 @@ data_to_review = [
 # --- MODIFICATION START ---
 
 # 1. Find the highest study_day
-highest_study_day = 0
+current_study_day = 0
 if data_to_review:
     # Use max() with a key for efficiency
-    highest_study_day = max(item['study_day'] for item in data_to_review)
+    current_study_day = max(item['study_day'] for item in data_to_review)
 
-print(f"Highest study_day found: {highest_study_day}")
+print(f"Highest study_day found: {current_study_day}")
 
 # 2. Filter the data_to_review list based on the highest study_day
 # This new list replaces the original data_to_review for scheduling
 data_for_latest_study_day = [
-    item for item in data_to_review if item['study_day'] == highest_study_day
+    item for item in data_to_review if item['study_day'] == current_study_day
 ]
 
-print(f"Number of items filtered with study_day {highest_study_day}: {len(data_for_latest_study_day)}")
+print(f"Number of items filtered with study_day {current_study_day}: {len(data_for_latest_study_day)}")
 print("Filtered words:")
 print([item['word'] for item in data_for_latest_study_day])
 
