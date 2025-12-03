@@ -1,44 +1,59 @@
 # spaced_repetition_concat_test_with_verification.py
 
 from collections import Counter
+templates = {
+    # Format: (Audio Sequence String, Repetitions: Number)
+    
+    # *Where W means Word and L means Language ad 1 and 2 mean base and target languages"
+    # The 'workout' template has a sequence of "SP W2 W1 L1 L2 L2 L2 L2 L2" and 1 repetition.
+    "workout": ("SP W2 W1 L1 L2 L2 L2 L2 L2", 2), 
+    
+    # The 'review_forward' template has a sequence of "SP W2 W1 L1 L2" and 2 repetitions.
+    "review_forward": ("SP W2 W1 L1 L2", 1), 
+    
+    # The 'review_reverse' template has a sequence of "SP W2 W1 L2 L1" and 2 repetitions.
+    "review_reverse": ("SP W2 W1 L2 L1", 1), 
+}
+TEMPLATE_DELIMITER: str = ' '
+
 data = [
-    {"word": "Epistle", "study_day": 3, "use_repetitions": True},
-    {"word": "Juxtapose", "study_day": 1, "use_repetitions": True},
-    {"word": "Verisimilitude", "study_day": 2, "use_repetitions": False},
-    {"word": "Cacophony", "study_day": 4, "use_repetitions": True},
-    {"word": "Knell", "study_day": 3, "use_repetitions": False},
-    {"word": "Zephyr", "study_day": 1, "use_repetitions": True},
-    {"word": "Mirth", "study_day": 2, "use_repetitions": True},
-    {"word": "Tryst", "study_day": 4, "use_repetitions": False},
-    {"word": "Halcyon", "study_day": 1, "use_repetitions": True},
-    {"word": "Ubiquitous", "study_day": 3, "use_repetitions": False},
-    {"word": "Serendipity", "study_day": 2, "use_repetitions": True},
-    {"word": "Pernicious", "study_day": 4, "use_repetitions": True},
-    {"word": "Reticent", "study_day": 1, "use_repetitions": False},
-    {"word": "Soliloquy", "study_day": 3, "use_repetitions": True},
-    {"word": "Labyrinth", "study_day": 2, "use_repetitions": False},
-    {"word": "Vacillate", "study_day": 4, "use_repetitions": True},
-    {"word": "Nefarious", "study_day": 1, "use_repetitions": False},
-    {"word": "Ephemeral", "study_day": 3, "use_repetitions": True},
-    {"word": "Quixotic", "study_day": 2, "use_repetitions": True},
-    {"word": "Taciturn", "study_day": 4, "use_repetitions": False},
-    {"word": "Ebullient", "study_day": 1, "use_repetitions": True},
-    {"word": "Innuendo", "study_day": 3, "use_repetitions": True},
-    {"word": "Onomatopoeia", "study_day": 2, "use_repetitions": False},
-    {"word": "Palimpsest", "study_day": 4, "use_repetitions": True},
-    {"word": "Somnambulist", "study_day": 1, "use_repetitions": False},
-    {"word": "Wanderlust", "study_day": 3, "use_repetitions": True},
-    {"word": "Mellifluous", "study_day": 2, "use_repetitions": True},
-    {"word": "Pulchritude", "study_day": 4, "use_repetitions": False},
-    {"word": "Susurrus", "study_day": 1, "use_repetitions": True},
-    {"word": "Lugubrious", "study_day": 3, "use_repetitions": False}
+    {"word": "Epistle", "study_day": 3},
+    {"word": "Juxtapose", "study_day": 1},
+    {"word": "Verisimilitude", "study_day": 2, },
+    {"word": "Cacophony", "study_day": 4},
+    {"word": "Knell", "study_day": 3, },
+    {"word": "Zephyr", "study_day": 1},
+    {"word": "Mirth", "study_day": 2},
+    {"word": "Tryst", "study_day": 4, },
+    {"word": "Halcyon", "study_day": 1},
+    {"word": "Ubiquitous", "study_day": 3, },
+    {"word": "Serendipity", "study_day": 2},
+    {"word": "Pernicious", "study_day": 4},
+    {"word": "Reticent", "study_day": 1, },
+    {"word": "Soliloquy", "study_day": 3},
+    {"word": "Labyrinth", "study_day": 2, },
+    {"word": "Vacillate", "study_day": 4},
+    {"word": "Nefarious", "study_day": 1, },
+    {"word": "Ephemeral", "study_day": 3},
+    {"word": "Quixotic", "study_day": 2},
+    {"word": "Taciturn", "study_day": 4, },
+    {"word": "Ebullient", "study_day": 1},
+    {"word": "Innuendo", "study_day": 3},
+    {"word": "Onomatopoeia", "study_day": 2, },
+    {"word": "Palimpsest", "study_day": 4},
+    {"word": "Somnambulist", "study_day": 1, },
+    {"word": "Wanderlust", "study_day": 3},
+    {"word": "Mellifluous", "study_day": 2},
+    {"word": "Pulchritude", "study_day": 4, },
+    {"word": "Susurrus", "study_day": 1},
+    {"word": "Lugubrious", "study_day": 3, }
 ]
 # Full intervals
 intervals = [0, 3, 7, 14, 30, 60, 120, 240]
 
 n = len(data) # number of sentence pairs
 print(f"The total count of dictionary items is: {len(data)}")
-x = 6 # how often each sentence pair must appearin the schedule
+x = second_item = templates["workout"][1] # how often each sentence pair must appearin the schedule
 
 # Use only the first x intervals
 use_intervals = intervals[:x]
@@ -77,6 +92,18 @@ def verify_output(output, n, x):
             success = False
     if success:
         print("Verification passed: all items appear exactly", x, "times.")
+# Create the schedule array based on the concatenated list
+schedule = []
+for word_id in concatenated:
+    # word_id is 1-based (1 to 30), corresponding to the row number.
+    # We subtract 1 to get the correct 0-based index for the 'data' list.
+    schedule.append(data[word_id - 1])
 
+print("\n---")
+print("Generated Schedule Array:")
+# Use pprint for a clean display of the list of dictionaries
+import pprint
+pprint.pprint(schedule)
+print("---")
 # Run verification
 verify_output(concatenated, n, x)
