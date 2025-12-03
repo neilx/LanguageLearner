@@ -8,7 +8,7 @@ templates = {
 
     # *Where W means Word and L means Language ad 1 and 2 mean base and target languages"
     # The 'workout' template has a sequence of "SP W2 W1 L1 L2 L2 L2 L2 L2" and 2 repetitions.
-    "workout": ("SP W2 W1 L1 L2 L2 L2 L2 L2", 2),
+    "workout": ("SP W2 W1 L1 L2 L2 L2 L2 L2", 3),
     
     # The 'review_forward' template has a sequence of "SP W2 W1 L1 L2" and 1 repetition.
     "review_forward": ("SP W2 W1 L1 L2", 1),
@@ -63,16 +63,16 @@ print(f"Highest study_day found: {highest_study_day}")
 
 # 2. Filter the data_to_review list based on the highest study_day
 # This new list replaces the original data_to_review for scheduling
-filtered_data_to_review = [
+data_for_latest_study_day = [
     item for item in data_to_review if item['study_day'] == highest_study_day
 ]
 
-print(f"Number of items filtered with study_day {highest_study_day}: {len(filtered_data_to_review)}")
+print(f"Number of items filtered with study_day {highest_study_day}: {len(data_for_latest_study_day)}")
 print("Filtered words:")
-print([item['word'] for item in filtered_data_to_review])
+print([item['word'] for item in data_for_latest_study_day])
 
 # Use the filtered data for all subsequent steps
-data_lookup = {item["word"]: item for item in filtered_data_to_review}
+data_lookup = {item["word"]: item for item in data_for_latest_study_day}
 all_words = list(data_lookup.keys()) # All unique word keys from the filtered set
 n = len(all_words) # number of unique words/items in the filtered set
 
