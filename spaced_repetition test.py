@@ -16,7 +16,7 @@ templates = {
 }
 TEMPLATE_DELIMITER: str = ' '
 
-data = [
+data_to_review = [
     {"word": "Epistle", "study_day": 3},
     {"word": "Juxtapose", "study_day": 1},
     {"word": "Verisimilitude", "study_day": 2, },
@@ -51,8 +51,8 @@ data = [
 # Full intervals
 intervals = [0, 3, 7, 14, 30, 60, 120, 240]
 
-n = len(data) # number of sentence pairs
-print(f"The total count of dictionary items is: {len(data)}")
+n = len(data_to_review) # number of sentence pairs
+print(f"The total count of dictionary items is: {len(data_to_review)}")
 x = second_item = templates["workout"][1] # how often each sentence pair must appearin the schedule
 
 # Use only the first x intervals
@@ -61,7 +61,7 @@ use_intervals = intervals[:x]
 arrays = {}
 
 # Populate the arrays dictionary
-for item in range(1, len(data) + 1):
+for item in range(1, len(data_to_review) + 1):
     indices = [item + use_intervals[0]]
     for i in range(1, len(use_intervals)):
         indices.append(indices[-1] + use_intervals[i])
@@ -86,7 +86,7 @@ def verify_output(output, n, x):
     """Check that output contains exactly x instances of each number 1..n"""
     counts = Counter(output)
     success = True
-    for i in range(1, len(data) + 1):
+    for i in range(1, len(data_to_review) + 1):
         if counts[i] != x:
             print(f"Error: Item {i} appears {counts[i]} times (expected {x})")
             success = False
@@ -96,8 +96,8 @@ def verify_output(output, n, x):
 schedule = []
 for word_id in concatenated:
     # word_id is 1-based (1 to 30), corresponding to the row number.
-    # We subtract 1 to get the correct 0-based index for the 'data' list.
-    schedule.append(data[word_id - 1])
+    # We subtract 1 to get the correct 0-based index for the 'data_to_review' list.
+    schedule.append(data_to_review[word_id - 1])
 
 print("\n---")
 print("Generated Schedule Array:")
