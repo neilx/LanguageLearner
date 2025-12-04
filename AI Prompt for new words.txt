@@ -1,0 +1,25 @@
+I am appending my current cumulative Danish vocabulary CSV file. 
+It uses the following columns and order: W2,W1,L1,L2,StudyDay,Note,IPA
+- W2 = Danish word
+- W1 = English word
+- L1 = English sentence
+- L2 = Danish sentence
+- StudyDay = integer
+- Note = idiomatic or grammatical notes
+- IPA = IPA for Danish word
+⚠️ Important Instructions:
+1. Generate a new **7-day batch** (5 sentences per day = 35 words total). 
+2. Use **only Danish words that do not appear in my CSV**. 
+3. For each word, create:
+   - a natural, idiomatic Danish sentence in spoken style inspired by my context: blues guitar, improvisation, retired life, carnivore diet, exercise, daily-life usefulness
+   - an English sentence translation
+   - a short Note about grammar, idiomatic usage, or context
+   - IPA for the Danish word
+4. Ensure **all fields are properly quoted if they contain commas**. For example:
+   "Mit yndlingsmåltid er en tyk, velkrydret bøf"
+5. Keep **column order exactly**: W2,W1,L1,L2,StudyDay,Note,IPA
+6. Increment StudyDay from the last StudyDay in the CSV.
+7. Output the result as a **single CSV code-block ready to append** to my master file.
+
+Do not repeat any words from the attached CSV.  
+Generate **fresh, unique words and sentences** each week.  
