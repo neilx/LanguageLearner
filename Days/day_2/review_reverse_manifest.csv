@@ -1,0 +1,12 @@
+sequence,W2,W1,L1,L2,StudyDay,type
+1,øve,practice,I try to practice guitar scales every day.,Jeg forsøger at øve guitar skalaer hver dag.,1,macro_review
+2,pension,retirement,He took early retirement last year to travel.,Han gik tidligt på pension sidste år for at rejse.,1,macro_review
+3,forbedre,improve,I want to improve my skills in spontaneous jamming.,Jeg ønsker at forbedre mine evner i spontan jamming.,1,macro_review
+4,bøf,steak,"My favorite meal is a thick, well-seasoned ribeye steak","Mit yndlingsmåltid er en tyk, velkrydret ribeye bøf",1,macro_review
+5,dagligvare,grocery,We need to buy basic groceries for the week.,Vi er nødt til at købe basale dagligvarer til ugen.,1,macro_review
+6,tryghed,security,"After retiring, financial security is very important.",Efter at have trukket mig tilbage er økonomisk tryghed meget vigtig.,2,micro_new
+7,akkord,chord,The guitarist played a complex diminished chord.,Guitaristen spillede en kompleks formindsket akkord.,2,micro_new
+8,mangle,lack,I realize I am missing one of my essential kitchen tools.,"Jeg er klar over, at jeg mangler et af mine essentielle køkkenredskaber.",2,micro_new
+9,tilpasning,adaptation,Successful improvisation relies on quick adaptation.,Succesfuld improvisation afhænger af hurtig tilpasning.,2,micro_new
+10,indkøb,shopping,I will handle the shopping for the household today.,Jeg tager mig af indkøbene til husholdningen i dag.,2,micro_new
+11,mæt,full,The high-fat diet keeps me feeling full for hours.,Den fedtrige kost holder mig mæt i timevis.,2,micro_new
