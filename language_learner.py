@@ -210,7 +210,7 @@ def real_gtts_api(text: str, language_code: str, cache_hits: List[int], api_call
     
     api_calls[0] += 1
     try:
-        tts = gTTS(text=text, lang=language_code, slow=)
+        tts = gTTS(text=text, lang=language_code, slow= not language_code.startswith('en'))
         tts.save(real_file_path)
         return real_file_path
     except Exception as e:
