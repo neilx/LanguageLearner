@@ -96,7 +96,7 @@ class Config:
     # --- Audio Templates ---
     # Key: (Pattern String, Repetition Count, Use Filtered Data Only?)
     AUDIO_TEMPLATES: Dict[str, Tuple[str, int, bool]] = {
-        "workout": ("SP W2 W1 L1 L2 L2 L2 L2 L2", 3, True), 
+        "workout": ("SP W2 W1 L1 L2",1, False), 
         "review_forward": ("SP W2 W1 L1 L2", 1, False), 
         "review_reverse": ("SP W2 W1 L2 L1", 1, False), 
     }
@@ -110,7 +110,7 @@ class Config:
     CONTENT_PAUSE_BUFFER_SEC: float = 0.3  
     
     # 2. Fixed duration for explicit 'SP' (Optimized for deep retrieval/thinking time)
-    EXPLICIT_PAUSE_SEC: float = 4.5       
+    EXPLICIT_PAUSE_SEC: float = 1.0       
         
     SEGMENT_ACTIONS: Dict[str, str] = {
         key: 'CONTENT' for key in CONTENT_KEYS
@@ -205,12 +205,12 @@ def mock_google_tts(text: str, language_code: str, cache_hits: List[int], api_ca
 def real_gtts_api(text: str, language_code: str, cache_hits: List[int], api_calls: List[int]) -> Path:
     real_file_path = get_cache_path(text, language_code)
     if real_file_path.exists():
-        cache_hits[0] += 1
+        cache_hits[0] += 1 
         return real_file_path
     
     api_calls[0] += 1
     try:
-        tts = gTTS(text=text, lang=language_code, slow= not language_code.startswith('en'))
+        tts = gTTS(text=text, lang=language_code, slow= False)
         tts.save(real_file_path)
         return real_file_path
     except Exception as e:
