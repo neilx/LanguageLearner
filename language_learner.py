@@ -1,10 +1,7 @@
-import os
 import csv
-import json
 import hashlib
-import sys
 from pathlib import Path
-from typing import List, Dict, Any, Tuple, Union, Set
+from typing import List, Dict, Any, Tuple, Set 
 from enum import Enum
 
 # Import gTTS for the real API call
@@ -39,7 +36,6 @@ AUDIO_SEGMENT_CACHE: Dict[Path, AudioSegment] = {}
 # 0. Declarative Types and Enums
 # =========================================================================
 
-# --- FIX: Removed hardcoded ScheduleItem TypedDict. Using generic Dict[str, Any] ---
 # A ScheduleItem holds a single row of data (W1, L2, StudyDay, type, etc.)
 ScheduleItem = Dict[str, Any]
 
@@ -229,7 +225,7 @@ def real_gtts_api(text: str, language_code: str, cache_hits: List[int], api_call
         tts = gTTS(text=text, lang=language_code, slow= False)
         tts.save(real_file_path)
         return real_file_path
-    except Exception as e:
+    except Exception:
         print(f"    ❌ gTTS Error: ({text[:15]}...)")
         real_file_path.touch(exist_ok=True)
         return real_file_path
@@ -266,7 +262,7 @@ def generate_interleaved_schedule(items: List[ScheduleItem], repetitions: int, i
 
 
 def pre_cache_day_segments(full_schedule: List[ScheduleItem], use_real_tts_mode: bool) -> None:
-    print(f"\n  - Pre-Caching unique audio segments...")
+    print("\n  - Pre-Caching unique audio segments...")
     cache_hits = [0]
     api_calls = [0]
 
@@ -281,7 +277,7 @@ def pre_cache_day_segments(full_schedule: List[ScheduleItem], use_real_tts_mode:
             full_lang_code = Config.get_lang_code(key)
             segment_tuple = (text_content, full_lang_code)
 
-            if text_content and segment_tuple not in unique_segments:
+            if text_content is not None and isinstance(text_content, str) and segment_tuple not in unique_segments:
                 try:
                     tts_func(text_content, full_lang_code, cache_hits, api_calls)
                     unique_segments.add(segment_tuple)
@@ -302,7 +298,7 @@ def generate_audio_from_template(
 
     output_filename = f"{template_name}.mp3"
     output_path = day_path / output_filename
-    expected_duration_sec: float = 0.0
+    expected_duration_sec: float = 0.0 # Correct variable initialized here
     is_real_mode = use_real_concat_mode
 
     if is_real_mode:
@@ -374,6 +370,7 @@ def generate_audio_from_template(
         except Exception as e:
             print(f"  ❌ FAILED TO EXPORT FINAL AUDIO: {e}")
 
+    # FIX: Corrected variable name from 'expected_dur' to 'expected_duration_sec'
     return output_path, expected_duration_sec
 
 
@@ -421,9 +418,9 @@ def load_and_validate_source_data() -> Tuple[List[ScheduleItem], int]:
         actual_fields = set(data[0].keys())
 
         if not expected_fields.issubset(actual_fields):
-             print(f"    ❌ CSV Header Mismatch! Required fields derived from templates: {list(expected_fields)}")
-             print(f"    ❌ Actual fields in CSV: {list(actual_fields)}")
-             return [], 0
+            print(f"    ❌ CSV Header Mismatch! Required fields derived from templates: {list(expected_fields)}")
+            print(f"    ❌ Actual fields in CSV: {list(actual_fields)}")
+            return [], 0
 
         # Ensure all required keys exist and cast StudyDay to int
         validated_data: List[ScheduleItem] = []
@@ -563,7 +560,7 @@ def is_day_complete(day: int) -> bool:
     return True
 
 def main_workflow():
-    print("## 📚 Language Learner Schedule Generator (v3.8 - Removed Hardcoded TypeDict) ##")
+    print("## 📚 Language Learner Schedule Generator (v4.2 - NameError Fix) ##")
 
     use_real_tts_mode, use_real_concat_mode, is_initial_run = run_environment_check()
     master_data, max_day = load_and_validate_source_data()
