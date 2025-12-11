@@ -40,7 +40,8 @@ AUDIO_SEGMENT_CACHE: Dict[Path, AudioSegment] = {}
 # =========================================================================
 
 class ScheduleItem(TypedDict):
-    """Schema for a single item entry in the generated schedules."""
+    """Schema for a single item entry in the generated schedules.
+    NOTE: The keys are dynamically determined from the templates."""
     W2: str
     W1: str
     L1: str
@@ -55,7 +56,7 @@ class ScheduleType(Enum):
     REVIEW = 'macro_review'
 
 # =========================================================================
-# 1. Configuration Constants (REFACTORED - Final Convention-Based)
+# 1. Configuration Constants (REFACTORED - Self-Discovering Keys)
 # =========================================================================
 
 class Config:
@@ -74,15 +75,11 @@ class Config:
     TARGET_LANG_CODE: str = 'da'
     BASE_LANG_CODE: str = 'en-GB'
 
-    # --- KNOWN KEYS (Used for CSV reading/writing) ---
-    # These are the keys that are expected to exist in the source data and have content.
-    _KNOWN_CONTENT_KEYS: List[str] = ['W2', 'W1', 'L1', 'L2']
-
     # --- Repetition Parameters ---
     MACRO_REPETITION_INTERVALS: List[int] = [1, 3, 7, 14, 30, 60, 120, 240]
     MICRO_SPACING_INTERVALS: List[int] = [0, 3, 7, 14, 28]
 
-    # --- Audio Templates ---
+    # --- CORE TEMPLATE SOURCE ---
     # Key: (Pattern String, Repetition Count, Use Filtered Data Only?)
     AUDIO_TEMPLATES: Dict[str, Tuple[str, int, bool]] = {
         "workout": ("SP W2 W1 L1 L2", 1, False),
@@ -93,6 +90,7 @@ class Config:
     TEMPLATE_DELIMITER: str = ' '
 
     # --- Audio Timing Logic (Dynamic) ---
+    # These segments are explicitly NOT content keys.
     SPECIAL_SEGMENTS: List[str] = ['SP']
 
     # 1. Padding added to the length of the word/sentence (Optimized for quick repetition)
@@ -108,11 +106,23 @@ class Config:
     MOCK_AVG_FILE_DURATION_SEC: float = 1.0
     DURATION_TOLERANCE_SEC: float = 0.5
 
-    # --- DERIVED CONTENT KEYS METHOD ---
+    # --- DYNAMICALLY DERIVED CONTENT KEYS METHOD ---
     @staticmethod
     def get_content_keys() -> List[str]:
-        """Returns the list of content keys defined by the core naming convention."""
-        return Config._KNOWN_CONTENT_KEYS
+        """
+        Dynamically generates the list of content keys by inspecting all templates
+        and filtering out special segments. This is the new source of truth for CSV columns.
+        """
+        all_segments: Set[str] = set()
+        for pattern, _, _ in Config.AUDIO_TEMPLATES.values():
+            all_segments.update(pattern.split(Config.TEMPLATE_DELIMITER))
+        
+        # Remove empty strings and special segments, then sort for consistent output
+        content_keys = [
+            key for key in all_segments
+            if key and key not in Config.SPECIAL_SEGMENTS
+        ]
+        return sorted(content_keys)
 
     # --- DEDUCTION LOGIC: Language code is deduced from the key's suffix. ---
     @staticmethod
@@ -126,12 +136,12 @@ class Config:
             return Config.BASE_LANG_CODE
         elif segment_key.endswith('2'):
             return Config.TARGET_LANG_CODE
-        # Fallback/Safety: Should not be called for non-content keys like 'SP'
+        # Fallback/Safety (should not be reached for content keys)
         return Config.BASE_LANG_CODE
 
 
 # --- Configuration Initialization ---
-# Setup SEGMENT_ACTIONS dynamically based on the known content keys
+# Setup SEGMENT_ACTIONS dynamically using the new content key derivation method
 Config.SEGMENT_ACTIONS.update({
     key: 'CONTENT' for key in Config.get_content_keys()
 })
@@ -156,6 +166,7 @@ def initialize_source_data() -> None:
         {'W2': 'mørke', 'W1': 'darkness', 'L1': 'The darkness fell.', 'L2': 'Mørket faldt på.', 'StudyDay': 3},
     ]
 
+    # Keys are derived directly from the templates now
     fieldnames = Config.get_content_keys() + ['StudyDay']
 
     try:
@@ -403,16 +414,42 @@ def load_and_validate_source_data() -> Tuple[List[Dict[str, Any]], int]:
         with open(Config.SOURCE_FILE, 'r', encoding='utf-8') as f:
             reader = csv.DictReader(f)
             data = list(reader)
+        
+        # Get content keys dynamically
         content_keys = Config.get_content_keys()
+        
+        # Determine all expected header fields
+        expected_fields = set(content_keys + ['StudyDay'])
+        
+        # Check that the data file contains all the required fields
+        if not data:
+            if Config.SOURCE_FILE.stat().st_size > 0:
+                print(f"    ⚠️ Data file is empty after header. Required fields: {list(expected_fields)}")
+            return [], 0
+        
+        actual_fields = set(data[0].keys())
+
+        if not expected_fields.issubset(actual_fields):
+             print(f"    ❌ CSV Header Mismatch! Required fields derived from templates: {list(expected_fields)}")
+             print(f"    ❌ Actual fields in CSV: {list(actual_fields)}")
+             # Exit early if the fundamental structure is wrong
+             return [], 0
+
+
         # Ensure all required keys exist and cast StudyDay to int
         validated_data = []
         for item in data:
+            # Only check content keys and StudyDay, ignore extra columns in the CSV
             if all(key in item for key in content_keys) and 'StudyDay' in item:
-                item['StudyDay'] = int(item['StudyDay'])
-                validated_data.append(item)
+                try:
+                    item['StudyDay'] = int(item['StudyDay'])
+                    validated_data.append(item)
+                except ValueError:
+                    print(f"    ⚠️ Skipping invalid row due to non-integer StudyDay: {item}")
             else:
-                print(f"    ⚠️ Skipping invalid row: {item}")
+                print(f"    ⚠️ Skipping invalid row (missing content keys or StudyDay): {item}")
         data = validated_data
+        
         max_day = max(item['StudyDay'] for item in data) if data else 0
         return data, max_day
     except Exception as e:
@@ -464,12 +501,14 @@ def generate_full_repetition_schedule(master_data: List[Dict[str, Any]], max_day
 def write_manifest_csv(day_path: Path, filename: str, schedule_data: List[ScheduleItem]) -> bool:
     schedule_path = day_path / filename
     try:
+        # Fieldnames are CONTENT KEYS (derived from templates) + METADATA (StudyDay, type, sequence)
         fieldnames = ['sequence'] + Config.get_content_keys() + ['StudyDay', 'type']
         with open(schedule_path, 'w', newline='', encoding='utf-8') as f:
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()
             for i, item in enumerate(schedule_data):
                 row = {'sequence': i + 1}
+                # Ensure only relevant fields from item are written
                 row.update({k: v for k, v in item.items() if k in fieldnames})
                 writer.writerow(row)
         return True
@@ -529,8 +568,10 @@ def is_day_complete(day: int) -> bool:
     return True
 
 def main_workflow():
-    print("## 📚 Language Learner Schedule Generator (v3.5 - Convention-Based Language Deduction) ##")
+    print("## 📚 Language Learner Schedule Generator (v3.6 - Fully Self-Discovering Keys) ##")
 
+    # The first thing we need is the dynamic key list, which is available now.
+    
     use_real_tts_mode, use_real_concat_mode, is_initial_run = run_environment_check()
     master_data, max_day = load_and_validate_source_data()
 
