@@ -55,7 +55,7 @@ class ScheduleType(Enum):
     REVIEW = 'macro_review'
 
 # =========================================================================
-# 1. Configuration Constants (REFACTORED)
+# 1. Configuration Constants (REFACTORED - Final Convention-Based)
 # =========================================================================
 
 class Config:
@@ -70,23 +70,13 @@ class Config:
     TTS_CACHE_DIR: Path = Path('tts_cache')
     TTS_CACHE_FILE_EXT: str = '.mp3'
 
-    # --- Language & Localization Parameters ---
+    # --- Language Codes (The source of truth for language) ---
     TARGET_LANG_CODE: str = 'da'
     BASE_LANG_CODE: str = 'en-GB'
 
-    # --- KEY SOURCE: Define the linguistic role of each segment key. ---
-    # NOTE: The keys here (W2, W1, L1, L2) define the official 'CONTENT_KEYS'.
-    LANGUAGE_ROLE_MAP: Dict[str, str] = {
-        'W2': 'TARGET',
-        'W1': 'BASE',
-        'L1': 'BASE',
-        'L2': 'TARGET',
-    }
-
-    LANG_CODE_RESOLVER: Dict[str, str] = {
-        'TARGET': TARGET_LANG_CODE,
-        'BASE': BASE_LANG_CODE
-    }
+    # --- KNOWN KEYS (Used for CSV reading/writing) ---
+    # These are the keys that are expected to exist in the source data and have content.
+    _KNOWN_CONTENT_KEYS: List[str] = ['W2', 'W1', 'L1', 'L2']
 
     # --- Repetition Parameters ---
     MACRO_REPETITION_INTERVALS: List[int] = [1, 3, 7, 14, 30, 60, 120, 240]
@@ -121,11 +111,27 @@ class Config:
     # --- DERIVED CONTENT KEYS METHOD ---
     @staticmethod
     def get_content_keys() -> List[str]:
-        """Dynamically derives the list of content keys from LANGUAGE_ROLE_MAP."""
-        return list(Config.LANGUAGE_ROLE_MAP.keys())
+        """Returns the list of content keys defined by the core naming convention."""
+        return Config._KNOWN_CONTENT_KEYS
+
+    # --- DEDUCTION LOGIC: Language code is deduced from the key's suffix. ---
+    @staticmethod
+    def get_lang_code(segment_key: str) -> str:
+        """
+        Deduces the language code based on the convention:
+        - Ends in '1' -> Base Language (e.g., W1, L1)
+        - Ends in '2' -> Target Language (e.g., W2, L2)
+        """
+        if segment_key.endswith('1'):
+            return Config.BASE_LANG_CODE
+        elif segment_key.endswith('2'):
+            return Config.TARGET_LANG_CODE
+        # Fallback/Safety: Should not be called for non-content keys like 'SP'
+        return Config.BASE_LANG_CODE
+
 
 # --- Configuration Initialization ---
-# Setup SEGMENT_ACTIONS dynamically based on LANGUAGE_ROLE_MAP
+# Setup SEGMENT_ACTIONS dynamically based on the known content keys
 Config.SEGMENT_ACTIONS.update({
     key: 'CONTENT' for key in Config.get_content_keys()
 })
@@ -150,9 +156,7 @@ def initialize_source_data() -> None:
         {'W2': 'mørke', 'W1': 'darkness', 'L1': 'The darkness fell.', 'L2': 'Mørket faldt på.', 'StudyDay': 3},
     ]
 
-    # --- CHANGE: Get keys dynamically
     fieldnames = Config.get_content_keys() + ['StudyDay']
-    # --- END CHANGE
 
     try:
         with open(Config.SOURCE_FILE, 'w', newline='', encoding='utf-8') as f:
@@ -198,10 +202,6 @@ def run_environment_check() -> Tuple[bool, bool, bool]:
 def get_cache_path(text: str, language_code: str) -> Path:
     content_hash = hashlib.sha256(f"{text}{language_code}".encode()).hexdigest()
     return Config.TTS_CACHE_DIR / f"{content_hash}{Config.TTS_CACHE_FILE_EXT}"
-
-def get_segment_lang_code(segment_key: str) -> str:
-    language_role = Config.LANGUAGE_ROLE_MAP.get(segment_key)
-    return Config.LANG_CODE_RESOLVER.get(language_role, Config.BASE_LANG_CODE)
 
 def mock_google_tts(text: str, language_code: str, cache_hits: List[int], api_calls: List[int]) -> Path:
     mock_file_path = get_cache_path(text, language_code)
@@ -270,14 +270,12 @@ def pre_cache_day_segments(full_schedule: List[ScheduleItem], use_real_tts_mode:
     tts_func = real_gtts_api if use_real_tts_mode else mock_google_tts
     unique_segments: Set[Tuple[str, str]] = set()
 
-    # --- CHANGE: Get keys dynamically
     content_keys = Config.get_content_keys()
-    # --- END CHANGE
 
     for item in full_schedule:
         for key in content_keys:
             text_content = item.get(key)
-            full_lang_code = get_segment_lang_code(key)
+            full_lang_code = Config.get_lang_code(key)
             segment_tuple = (text_content, full_lang_code)
 
             if text_content and segment_tuple not in unique_segments:
@@ -318,7 +316,7 @@ def generate_audio_from_template(
 
             if action_type == 'CONTENT':
                 text_content = item.get(segment_key, "")
-                full_lang_code = get_segment_lang_code(segment_key)
+                full_lang_code = Config.get_lang_code(segment_key)
                 cached_path = get_cache_path(text_content, full_lang_code)
 
                 segment_duration_ms = Config.MOCK_AVG_FILE_DURATION_SEC * 1000.0
@@ -405,7 +403,6 @@ def load_and_validate_source_data() -> Tuple[List[Dict[str, Any]], int]:
         with open(Config.SOURCE_FILE, 'r', encoding='utf-8') as f:
             reader = csv.DictReader(f)
             data = list(reader)
-        # --- CHANGE: Use derived keys
         content_keys = Config.get_content_keys()
         # Ensure all required keys exist and cast StudyDay to int
         validated_data = []
@@ -416,7 +413,6 @@ def load_and_validate_source_data() -> Tuple[List[Dict[str, Any]], int]:
             else:
                 print(f"    ⚠️ Skipping invalid row: {item}")
         data = validated_data
-        # --- END CHANGE
         max_day = max(item['StudyDay'] for item in data) if data else 0
         return data, max_day
     except Exception as e:
@@ -431,9 +427,7 @@ def generate_full_repetition_schedule(master_data: List[Dict[str, Any]], max_day
     schedules: Dict[int, List[ScheduleItem]] = {}
     history = [item.copy() for item in master_data]
 
-    # --- CHANGE: Use derived keys
     content_keys = Config.get_content_keys()
-    # --- END CHANGE
 
     for current_day in range(1, max_day + 1):
         day_items: List[ScheduleItem] = []
@@ -470,9 +464,7 @@ def generate_full_repetition_schedule(master_data: List[Dict[str, Any]], max_day
 def write_manifest_csv(day_path: Path, filename: str, schedule_data: List[ScheduleItem]) -> bool:
     schedule_path = day_path / filename
     try:
-        # --- CHANGE: Get keys dynamically
         fieldnames = ['sequence'] + Config.get_content_keys() + ['StudyDay', 'type']
-        # --- END CHANGE
         with open(schedule_path, 'w', newline='', encoding='utf-8') as f:
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()
@@ -537,7 +529,7 @@ def is_day_complete(day: int) -> bool:
     return True
 
 def main_workflow():
-    print("## 📚 Language Learner Schedule Generator (v3.3 - Dynamic Content Keys) ##")
+    print("## 📚 Language Learner Schedule Generator (v3.5 - Convention-Based Language Deduction) ##")
 
     use_real_tts_mode, use_real_concat_mode, is_initial_run = run_environment_check()
     master_data, max_day = load_and_validate_source_data()
