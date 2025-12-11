@@ -4,7 +4,7 @@ import json
 import hashlib
 import sys
 from pathlib import Path
-from typing import List, Dict, Any, Tuple, TypedDict, Union
+from typing import List, Dict, Any, Tuple, TypedDict, Union, Set
 from enum import Enum
 
 # Import gTTS for the real API call
@@ -20,7 +20,7 @@ try:
     REAL_CONCAT_AVAILABLE = True
     # Attempt to trigger an error if FFmpeg/Libav is missing
     try:
-        AudioSegment.empty() 
+        AudioSegment.empty()
         FFMPEG_AVAILABLE = True
     except Exception:
         FFMPEG_AVAILABLE = False
@@ -29,12 +29,11 @@ except ImportError:
     FFMPEG_AVAILABLE = False
 
 # =========================================================================
-# 0. Global Memory Cache (NEW)
-# This will hold pydub AudioSegment objects after they are read from disk.
+# 0. Global Memory Cache
 # =========================================================================
 
 # The key is the full path to the cached MP3 file.
-AUDIO_SEGMENT_CACHE: Dict[Path, AudioSegment] = {} 
+AUDIO_SEGMENT_CACHE: Dict[Path, AudioSegment] = {}
 
 # =========================================================================
 # 0. Declarative Types and Enums
@@ -47,7 +46,7 @@ class ScheduleItem(TypedDict):
     L1: str
     L2: str
     StudyDay: int
-    type: str 
+    type: str
     repetition: int
 
 class ScheduleType(Enum):
@@ -56,27 +55,27 @@ class ScheduleType(Enum):
     REVIEW = 'macro_review'
 
 # =========================================================================
-# 1. Configuration Constants
+# 1. Configuration Constants (REFACTORED)
 # =========================================================================
 
 class Config:
     """Consolidated configuration settings."""
 
     # --- TTS Execution Switch ---
-    USE_REAL_TTS: bool = True 
-    
+    USE_REAL_TTS: bool = True
+
     # --- File Paths ---
     SOURCE_FILE: Path = Path('sentence_pairs.csv')
     OUTPUT_ROOT_DIR: Path = Path('Days')
     TTS_CACHE_DIR: Path = Path('tts_cache')
-    TTS_CACHE_FILE_EXT: str = '.mp3' 
-    
+    TTS_CACHE_FILE_EXT: str = '.mp3'
+
     # --- Language & Localization Parameters ---
     TARGET_LANG_CODE: str = 'da'
     BASE_LANG_CODE: str = 'en-GB'
-    
-    CONTENT_KEYS: List[str] = ['W2', 'W1', 'L1', 'L2'] 
 
+    # --- KEY SOURCE: Define the linguistic role of each segment key. ---
+    # NOTE: The keys here (W2, W1, L1, L2) define the official 'CONTENT_KEYS'.
     LANGUAGE_ROLE_MAP: Dict[str, str] = {
         'W2': 'TARGET',
         'W1': 'BASE',
@@ -88,7 +87,7 @@ class Config:
         'TARGET': TARGET_LANG_CODE,
         'BASE': BASE_LANG_CODE
     }
-    
+
     # --- Repetition Parameters ---
     MACRO_REPETITION_INTERVALS: List[int] = [1, 3, 7, 14, 30, 60, 120, 240]
     MICRO_SPACING_INTERVALS: List[int] = [0, 3, 7, 14, 28]
@@ -96,39 +95,51 @@ class Config:
     # --- Audio Templates ---
     # Key: (Pattern String, Repetition Count, Use Filtered Data Only?)
     AUDIO_TEMPLATES: Dict[str, Tuple[str, int, bool]] = {
-        "workout": ("SP W2 W1 L1 L2",1, False), 
-        "review_forward": ("SP W2 W1 L1 L2", 1, False), 
-        "review_reverse": ("SP W2 W1 L2 L1", 1, False), 
+        "workout": ("SP W2 W1 L1 L2", 1, False),
+        "review_forward": ("SP W2 W1 L1 L2", 1, False),
+        "review_reverse": ("SP W2 W1 L2 L1", 1, False),
     }
-    
+
     TEMPLATE_DELIMITER: str = ' '
-    
+
     # --- Audio Timing Logic (Dynamic) ---
     SPECIAL_SEGMENTS: List[str] = ['SP']
-    
+
     # 1. Padding added to the length of the word/sentence (Optimized for quick repetition)
-    CONTENT_PAUSE_BUFFER_SEC: float = 0.3  
-    
+    CONTENT_PAUSE_BUFFER_SEC: float = 0.3
+
     # 2. Fixed duration for explicit 'SP' (Optimized for deep retrieval/thinking time)
-    EXPLICIT_PAUSE_SEC: float = 1.0       
-        
-    SEGMENT_ACTIONS: Dict[str, str] = {
-        key: 'CONTENT' for key in CONTENT_KEYS
-    }
-    SEGMENT_ACTIONS['SP'] = 'EXPLICIT_PAUSE'
+    EXPLICIT_PAUSE_SEC: float = 1.0
+
+    # Dynamic dictionary to hold actions (Initialized below)
+    SEGMENT_ACTIONS: Dict[str, str] = {}
 
     # --- Integrity Check Parameters ---
-    MOCK_AVG_FILE_DURATION_SEC: float = 1.0 
-    DURATION_TOLERANCE_SEC: float = 0.5 
+    MOCK_AVG_FILE_DURATION_SEC: float = 1.0
+    DURATION_TOLERANCE_SEC: float = 0.5
+
+    # --- DERIVED CONTENT KEYS METHOD ---
+    @staticmethod
+    def get_content_keys() -> List[str]:
+        """Dynamically derives the list of content keys from LANGUAGE_ROLE_MAP."""
+        return list(Config.LANGUAGE_ROLE_MAP.keys())
+
+# --- Configuration Initialization ---
+# Setup SEGMENT_ACTIONS dynamically based on LANGUAGE_ROLE_MAP
+Config.SEGMENT_ACTIONS.update({
+    key: 'CONTENT' for key in Config.get_content_keys()
+})
+Config.SEGMENT_ACTIONS['SP'] = 'EXPLICIT_PAUSE'
+# --- End Configuration Initialization ---
 
 
 # =========================================================================
-# 2. Environment Check and Setup 
+# 2. Environment Check and Setup
 # =========================================================================
 
 def initialize_source_data() -> None:
     """Creates the mock sentence_pairs.csv file if it does not exist."""
-    
+
     mock_data = [
         {'W2': 'sol', 'W1': 'sun', 'L1': 'The sun is shining today.', 'L2': 'Solen skinner i dag.', 'StudyDay': 1},
         {'W2': 'måne', 'W1': 'moon', 'L1': 'The moon is beautiful tonight.', 'L2': 'Månen er smuk i aften.', 'StudyDay': 1},
@@ -139,7 +150,9 @@ def initialize_source_data() -> None:
         {'W2': 'mørke', 'W1': 'darkness', 'L1': 'The darkness fell.', 'L2': 'Mørket faldt på.', 'StudyDay': 3},
     ]
 
-    fieldnames = Config.CONTENT_KEYS + ['StudyDay']
+    # --- CHANGE: Get keys dynamically
+    fieldnames = Config.get_content_keys() + ['StudyDay']
+    # --- END CHANGE
 
     try:
         with open(Config.SOURCE_FILE, 'w', newline='', encoding='utf-8') as f:
@@ -153,7 +166,7 @@ def initialize_source_data() -> None:
 def run_environment_check() -> Tuple[bool, bool, bool]:
     """Checks dependencies and file existence."""
     print("--- 🔬 Starting Environment and Dependency Check ---")
-    
+
     is_initial_run = not Config.SOURCE_FILE.exists()
     if is_initial_run:
         initialize_source_data()
@@ -165,10 +178,10 @@ def run_environment_check() -> Tuple[bool, bool, bool]:
 
     real_tts_mode = Config.USE_REAL_TTS and REAL_TTS_AVAILABLE
     real_concat_mode = REAL_CONCAT_AVAILABLE and FFMPEG_AVAILABLE
-    
+
     if Config.USE_REAL_TTS and not real_tts_mode:
         print("❌ gTTS not found. Run: pip install gTTS")
-    
+
     if Config.USE_REAL_TTS and not real_concat_mode:
         if not REAL_CONCAT_AVAILABLE:
             print("❌ Pydub not found. Run: pip install pydub")
@@ -205,9 +218,9 @@ def mock_google_tts(text: str, language_code: str, cache_hits: List[int], api_ca
 def real_gtts_api(text: str, language_code: str, cache_hits: List[int], api_calls: List[int]) -> Path:
     real_file_path = get_cache_path(text, language_code)
     if real_file_path.exists():
-        cache_hits[0] += 1 
+        cache_hits[0] += 1
         return real_file_path
-    
+
     api_calls[0] += 1
     try:
         tts = gTTS(text=text, lang=language_code, slow= False)
@@ -215,7 +228,7 @@ def real_gtts_api(text: str, language_code: str, cache_hits: List[int], api_call
         return real_file_path
     except Exception as e:
         print(f"    ❌ gTTS Error: ({text[:15]}...)")
-        real_file_path.touch(exist_ok=True) 
+        real_file_path.touch(exist_ok=True)
         return real_file_path
 
 
@@ -226,26 +239,26 @@ def real_gtts_api(text: str, language_code: str, cache_hits: List[int], api_call
 def generate_interleaved_schedule(items: List[ScheduleItem], repetitions: int, intervals: List[int]) -> List[ScheduleItem]:
     if not items or repetitions <= 0:
         return []
-    
+
     if repetitions > len(intervals):
-        use_intervals = intervals[:] 
+        use_intervals = intervals[:]
     else:
         use_intervals = intervals[:repetitions]
 
     arrays: Dict[int, List[ScheduleItem]] = {}
-    
+
     for item_position, item in enumerate(items, 1):
-        indices = [item_position + use_intervals[0]] 
+        indices = [item_position + use_intervals[0]]
         for i in range(1, len(use_intervals)):
             indices.append(indices[-1] + use_intervals[i])
-        
+
         for idx in indices:
             arrays.setdefault(idx, []).append(item)
 
     concatenated: List[ScheduleItem] = []
     for key in sorted(arrays):
         concatenated.extend(arrays[key])
-        
+
     return concatenated
 
 
@@ -253,39 +266,43 @@ def pre_cache_day_segments(full_schedule: List[ScheduleItem], use_real_tts_mode:
     print(f"\n  - Pre-Caching unique audio segments...")
     cache_hits = [0]
     api_calls = [0]
-    
+
     tts_func = real_gtts_api if use_real_tts_mode else mock_google_tts
-    unique_segments = set()
+    unique_segments: Set[Tuple[str, str]] = set()
+
+    # --- CHANGE: Get keys dynamically
+    content_keys = Config.get_content_keys()
+    # --- END CHANGE
 
     for item in full_schedule:
-        for key in Config.CONTENT_KEYS:
+        for key in content_keys:
             text_content = item.get(key)
-            full_lang_code = get_segment_lang_code(key) 
+            full_lang_code = get_segment_lang_code(key)
             segment_tuple = (text_content, full_lang_code)
-            
+
             if text_content and segment_tuple not in unique_segments:
                 try:
                     tts_func(text_content, full_lang_code, cache_hits, api_calls)
                     unique_segments.add(segment_tuple)
                 except Exception as e:
                     print(f"    ❌ Error pre-caching: {e}")
-                    unique_segments.add(segment_tuple) 
-    
+                    unique_segments.add(segment_tuple)
+
     print(f"  - Pre-Caching complete. Cache Hits: {cache_hits[0]}, API Calls: {api_calls[0]}")
 
 
 def generate_audio_from_template(
-    day_path: Path, 
+    day_path: Path,
     template_name: str,
     pattern_string: str,
     data_list: List[ScheduleItem],
     use_real_concat_mode: bool
 ) -> Tuple[Path, float]:
-    
+
     output_filename = f"{template_name}.mp3"
     output_path = day_path / output_filename
     expected_duration_sec: float = 0.0
-    is_real_mode = use_real_concat_mode 
+    is_real_mode = use_real_concat_mode
 
     if is_real_mode:
         final_audio = AudioSegment.empty()
@@ -298,21 +315,21 @@ def generate_audio_from_template(
             if not segment_key: continue
 
             action_type = Config.SEGMENT_ACTIONS.get(segment_key)
-            
+
             if action_type == 'CONTENT':
                 text_content = item.get(segment_key, "")
                 full_lang_code = get_segment_lang_code(segment_key)
                 cached_path = get_cache_path(text_content, full_lang_code)
-                
+
                 segment_duration_ms = Config.MOCK_AVG_FILE_DURATION_SEC * 1000.0
 
                 if is_real_mode:
-                    
-                    # --- MEMORY CACHE LOOKUP (NEW) ---
+
+                    # --- MEMORY CACHE LOOKUP ---
                     if cached_path in AUDIO_SEGMENT_CACHE:
                         segment_audio = AUDIO_SEGMENT_CACHE[cached_path]
                         # print(f"    [Cache Hit in RAM: {segment_key}]")
-                    
+
                     elif cached_path.exists() and cached_path.stat().st_size > 0:
                         try:
                             # Load from Disk (Cache Miss)
@@ -324,18 +341,18 @@ def generate_audio_from_template(
                             segment_audio = AudioSegment.silent(duration=100)
                     else:
                         segment_audio = AudioSegment.silent(duration=100)
-                    
-                    
+
+
                     # --- CONCATENATION ---
                     final_audio += segment_audio
                     segment_duration_ms = float(len(segment_audio))
 
                 # DYNAMIC CALCULATION: Pause = Audio Length + Buffer
                 pause_duration_ms = segment_duration_ms + (Config.CONTENT_PAUSE_BUFFER_SEC * 1000.0)
-                
+
                 # Add to total expected duration
                 expected_duration_sec += (segment_duration_ms + pause_duration_ms) / 1000.0
-                
+
                 if is_real_mode:
                     final_audio += AudioSegment.silent(duration=int(pause_duration_ms))
 
@@ -344,10 +361,10 @@ def generate_audio_from_template(
                 # Fixed pause for 'SP'
                 pause_ms = Config.EXPLICIT_PAUSE_SEC * 1000.0
                 expected_duration_sec += Config.EXPLICIT_PAUSE_SEC
-                
+
                 if is_real_mode:
                     final_audio += AudioSegment.silent(duration=int(pause_ms))
-    
+
     print("\n  - Exporting file...")
     if is_real_mode:
         try:
@@ -363,14 +380,14 @@ def verify_audio_duration_integrity(file_path: Path, expected_duration_sec: floa
     if not file_path.exists(): return False, "File not found."
     if not use_real_concat_mode: return True, "Mock mode verified."
     if file_path.stat().st_size == 0: return True, "0 bytes (Mock/Error)."
-    
+
     if REAL_CONCAT_AVAILABLE:
         try:
             # We don't use the memory cache here as we are loading the FINAL large file
-            audio = AudioSegment.from_mp3(file_path) 
+            audio = AudioSegment.from_mp3(file_path)
             actual_duration_sec = len(audio) / 1000.0
             diff = abs(actual_duration_sec - expected_duration_sec)
-            
+
             if diff <= Config.DURATION_TOLERANCE_SEC:
                 return True, f"Valid. Diff: {diff:.3f}s"
             return False, f"Duration mismatch. Exp: {expected_duration_sec:.2f}, Act: {actual_duration_sec:.2f}"
@@ -388,7 +405,18 @@ def load_and_validate_source_data() -> Tuple[List[Dict[str, Any]], int]:
         with open(Config.SOURCE_FILE, 'r', encoding='utf-8') as f:
             reader = csv.DictReader(f)
             data = list(reader)
-        for item in data: item['StudyDay'] = int(item['StudyDay']) 
+        # --- CHANGE: Use derived keys
+        content_keys = Config.get_content_keys()
+        # Ensure all required keys exist and cast StudyDay to int
+        validated_data = []
+        for item in data:
+            if all(key in item for key in content_keys) and 'StudyDay' in item:
+                item['StudyDay'] = int(item['StudyDay'])
+                validated_data.append(item)
+            else:
+                print(f"    ⚠️ Skipping invalid row: {item}")
+        data = validated_data
+        # --- END CHANGE
         max_day = max(item['StudyDay'] for item in data) if data else 0
         return data, max_day
     except Exception as e:
@@ -403,40 +431,48 @@ def generate_full_repetition_schedule(master_data: List[Dict[str, Any]], max_day
     schedules: Dict[int, List[ScheduleItem]] = {}
     history = [item.copy() for item in master_data]
 
+    # --- CHANGE: Use derived keys
+    content_keys = Config.get_content_keys()
+    # --- END CHANGE
+
     for current_day in range(1, max_day + 1):
         day_items: List[ScheduleItem] = []
-        
+
         # 1. Identify Review Items
         for item in history:
             original_study_day = item['StudyDay']
             if any(original_study_day + interval == current_day for interval in Config.MACRO_REPETITION_INTERVALS):
                 review_item: ScheduleItem = {
-                    'W2': item['W2'], 'W1': item['W1'], 'L1': item['L1'], 'L2': item['L2'], 
                     'StudyDay': original_study_day,
                     'type': ScheduleType.REVIEW.value,
-                    'repetition': 0 
+                    'repetition': 0
                 }
+                # Dynamically add content keys
+                review_item.update({key: item.get(key, '') for key in content_keys})
                 day_items.append(review_item)
 
         # 2. Identify New Items
         new_items_raw = [item for item in master_data if item['StudyDay'] == current_day]
         for item in new_items_raw:
             new_item: ScheduleItem = {
-                'W2': item['W2'], 'W1': item['W1'], 'L1': item['L1'], 'L2': item['L2'],
                 'StudyDay': current_day,
                 'type': ScheduleType.NEW.value,
                 'repetition': 0
             }
+            # Dynamically add content keys
+            new_item.update({key: item.get(key, '') for key in content_keys})
             day_items.append(new_item)
 
         schedules[current_day] = day_items
-        
+
     return schedules
 
 def write_manifest_csv(day_path: Path, filename: str, schedule_data: List[ScheduleItem]) -> bool:
     schedule_path = day_path / filename
     try:
-        fieldnames = ['sequence'] + Config.CONTENT_KEYS + ['StudyDay', 'type']
+        # --- CHANGE: Get keys dynamically
+        fieldnames = ['sequence'] + Config.get_content_keys() + ['StudyDay', 'type']
+        # --- END CHANGE
         with open(schedule_path, 'w', newline='', encoding='utf-8') as f:
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()
@@ -452,15 +488,15 @@ def write_manifest_csv(day_path: Path, filename: str, schedule_data: List[Schedu
 def process_day(day: int, full_schedule: List[ScheduleItem], use_real_tts_mode: bool, use_real_concat_mode: bool):
     day_path = Config.OUTPUT_ROOT_DIR / f"day_{day}"
     day_path.mkdir(parents=True, exist_ok=True)
-    
+
     print(f"\n--- 📝 Processing Day {day} ---")
     pre_cache_day_segments(full_schedule, use_real_tts_mode)
 
     # --- INTEGRATED TEMPLATE LOOP ---
     for template_name, (pattern, repetitions, use_filtered_data) in Config.AUDIO_TEMPLATES.items():
-        
+
         print(f"\n  > Processing Template: {template_name.upper()}")
-        
+
         # 1. Filter Data
         if use_filtered_data:
             source_items = [item for item in full_schedule if item['type'] == ScheduleType.NEW.value]
@@ -469,8 +505,8 @@ def process_day(day: int, full_schedule: List[ScheduleItem], use_real_tts_mode: 
 
         # 2. Apply Spacing/Interleaving Logic
         sequenced_items = generate_interleaved_schedule(
-            source_items, 
-            repetitions, 
+            source_items,
+            repetitions,
             Config.MICRO_SPACING_INTERVALS
         )
 
@@ -501,11 +537,11 @@ def is_day_complete(day: int) -> bool:
     return True
 
 def main_workflow():
-    print("## 📚 Language Learner Schedule Generator (v3.2 - Memory Cache Optimized) ##")
-    
+    print("## 📚 Language Learner Schedule Generator (v3.3 - Dynamic Content Keys) ##")
+
     use_real_tts_mode, use_real_concat_mode, is_initial_run = run_environment_check()
-    master_data, max_day = load_and_validate_source_data() 
-    
+    master_data, max_day = load_and_validate_source_data()
+
     if not master_data: return
 
     days_to_process = []
@@ -517,20 +553,18 @@ def main_workflow():
 
     if not days_to_process:
         print("\n✅ All days are complete.")
-        return 
+        return
 
     schedules = generate_full_repetition_schedule(master_data, max_day)
 
     for day in days_to_process:
         schedule = schedules.get(day)
         if schedule:
-            process_day(day, schedule, use_real_tts_mode, use_real_concat_mode) 
+            process_day(day, schedule, use_real_tts_mode, use_real_concat_mode)
             print(f"--- Day {day} Complete ---\n")
         else:
             print(f"  ❌ No data for Day {day}.")
-    
-    # Optional: Clear the memory cache after run completes
-    # AUDIO_SEGMENT_CACHE.clear() 
+
 
 if __name__ == "__main__":
     main_workflow()
