@@ -41,8 +41,8 @@ ScheduleItem = Dict[str, Any]
 
 class ScheduleType(Enum):
     """Defines the two types of items that appear in the schedule."""
-    NEW = 'micro_new'
-    REVIEW = 'macro_review'
+    NEW = 'new'
+    REVIEW = 'review'
 
 # =========================================================================
 # 1. Configuration Constants
