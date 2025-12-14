@@ -1,16 +1,24 @@
 import csv
 import hashlib
+import os
+import sys
 from pathlib import Path
-from typing import List, Dict, Any, Tuple, Set 
+from typing import List, Dict, Any, Tuple, Set
 from enum import Enum
 
-# Import gTTS for the real API call
+# --- Google Cloud TTS Imports ---
+# Set your Google API key as an environment variable (assuming you need this)
+os.environ["GOOGLE_API_KEY"] = "AIzaSyDuKh9xBUUzkQty_ZRdhU9uV9EP7LD6i-Y"
 try:
-    from gtts import gTTS
-    REAL_TTS_AVAILABLE = True
+    from google.cloud import texttospeech
+    from google.api_core.client_options import ClientOptions
+    
+    # Global client variable to be initialized once in main_workflow
+    TTS_CLIENT = None
+    CLOUD_TTS_AVAILABLE = True
 except ImportError:
-    REAL_TTS_AVAILABLE = False
-
+    CLOUD_TTS_AVAILABLE = False
+    
 # Import Pydub for audio concatenation
 try:
     from pydub import AudioSegment
@@ -24,6 +32,7 @@ try:
 except ImportError:
     REAL_CONCAT_AVAILABLE = False
     FFMPEG_AVAILABLE = False
+
 
 # =========================================================================
 # 0. Global Memory Cache
@@ -61,9 +70,15 @@ class Config:
     TTS_CACHE_FILE_EXT: str = '.mp3'
 
     # --- Language Codes (The source of truth for language deduction) ---
-    TARGET_LANG_CODE: str = 'da'
-    BASE_LANG_CODE: str = 'en-GB'
-
+    TARGET_LANG_CODE: str = 'da-DK'
+    BASE_LANG_CODE: str = 'en-US'
+    
+    # --- VOICE SELECTION: Using Google's high-quality Neural2/WaveNet voices ---
+    # Danish (da-DK): 'da-DK-Neural2-D' is a great natural-sounding voice.
+    # English (en-US): 'en-US-Neural2-J' (female) or 'en-US-Neural2-I' (male) are excellent.
+    TARGET_VOICE_NAME: str = 'da-DK-Neural2-D'
+    BASE_VOICE_NAME: str = 'en-US-Neural2-J'
+    
     # --- Repetition Parameters ---
     MACRO_REPETITION_INTERVALS: List[int] = [1, 3, 7, 14, 30, 60, 120, 240]
     MICRO_SPACING_INTERVALS: List[int] = [0, 3, 7, 14, 28]
@@ -79,7 +94,6 @@ class Config:
     TEMPLATE_DELIMITER: str = ' '
 
     # --- Audio Timing Logic (Dynamic) ---
-    # These segments are explicitly NOT content keys.
     SPECIAL_SEGMENTS: List[str] = ['SP']
 
     # 1. Padding added to the length of the word/sentence (Optimized for quick repetition)
@@ -98,39 +112,35 @@ class Config:
     # --- DYNAMICALLY DERIVED CONTENT KEYS METHOD ---
     @staticmethod
     def get_content_keys() -> List[str]:
-        """
-        Dynamically generates the exhaustive list of content keys by inspecting all templates
-        and filtering out special segments. Used for establishing CSV schema (column existence).
-        """
+        """Dynamically generates the exhaustive list of content keys."""
         all_segments: Set[str] = set()
         for pattern, _, _ in Config.AUDIO_TEMPLATES.values():
             all_segments.update(pattern.split(Config.TEMPLATE_DELIMITER))
         
-        # Remove empty strings and special segments, then sort for consistent CSV checking
         content_keys = [
             key for key in all_segments
             if key and key not in Config.SPECIAL_SEGMENTS
         ]
         return sorted(content_keys)
 
-    # --- DEDUCTION LOGIC: Language code is deduced from the key's suffix. ---
+    # --- DEDUCTION LOGIC: Language code and Voice name is deduced from the key's suffix. ---
     @staticmethod
-    def get_lang_code(segment_key: str) -> str:
+    def get_lang_config(segment_key: str) -> Tuple[str, str]:
         """
-        Deduces the language code based on the convention:
+        Deduces the language code and voice name based on the convention:
         - Ends in '1' -> Base Language (e.g., W1, L1)
         - Ends in '2' -> Target Language (e.g., W2, L2)
+        Returns: (language_code, voice_name)
         """
         if segment_key.endswith('1'):
-            return Config.BASE_LANG_CODE
+            return Config.BASE_LANG_CODE, Config.BASE_VOICE_NAME
         elif segment_key.endswith('2'):
-            return Config.TARGET_LANG_CODE
+            return Config.TARGET_LANG_CODE, Config.TARGET_VOICE_NAME
         # Fallback/Safety
-        return Config.BASE_LANG_CODE
+        return Config.BASE_LANG_CODE, Config.BASE_VOICE_NAME
 
 
 # --- Configuration Initialization ---
-# Setup SEGMENT_ACTIONS dynamically using the new content key derivation method
 Config.SEGMENT_ACTIONS.update({
     key: 'CONTENT' for key in Config.get_content_keys()
 })
@@ -179,11 +189,11 @@ def run_environment_check() -> Tuple[bool, bool, bool]:
     for path in [Config.OUTPUT_ROOT_DIR, Config.TTS_CACHE_DIR]:
         path.mkdir(parents=True, exist_ok=True)
 
-    real_tts_mode = Config.USE_REAL_TTS and REAL_TTS_AVAILABLE
+    real_tts_mode = Config.USE_REAL_TTS and CLOUD_TTS_AVAILABLE
     real_concat_mode = REAL_CONCAT_AVAILABLE and FFMPEG_AVAILABLE
 
     if Config.USE_REAL_TTS and not real_tts_mode:
-        print("❌ gTTS not found. Run: pip install gTTS")
+        print("❌ Google Cloud Text-to-Speech library (google-cloud-texttospeech) not found. Run: pip install google-cloud-texttospeech")
 
     if Config.USE_REAL_TTS and not real_concat_mode:
         if not REAL_CONCAT_AVAILABLE:
@@ -198,12 +208,13 @@ def run_environment_check() -> Tuple[bool, bool, bool]:
 # 3. TTS API METHODS
 # =========================================================================
 
-def get_cache_path(text: str, language_code: str) -> Path:
-    content_hash = hashlib.sha256(f"{text}{language_code}".encode()).hexdigest()
+def get_cache_path(text: str, language_code: str, voice_name: str) -> Path:
+    # Include voice_name in the hash for a unique cache key
+    content_hash = hashlib.sha256(f"{text}{language_code}{voice_name}".encode()).hexdigest()
     return Config.TTS_CACHE_DIR / f"{content_hash}{Config.TTS_CACHE_FILE_EXT}"
 
-def mock_google_tts(text: str, language_code: str, cache_hits: List[int], api_calls: List[int]) -> Path:
-    mock_file_path = get_cache_path(text, language_code)
+def mock_google_tts(text: str, language_code: str, voice_name: str, cache_hits: List[int], api_calls: List[int]) -> Path:
+    mock_file_path = get_cache_path(text, language_code, voice_name)
     if mock_file_path.exists():
         cache_hits[0] += 1
     else:
@@ -214,19 +225,55 @@ def mock_google_tts(text: str, language_code: str, cache_hits: List[int], api_ca
             pass
     return mock_file_path
 
-def real_gtts_api(text: str, language_code: str, cache_hits: List[int], api_calls: List[int]) -> Path:
-    real_file_path = get_cache_path(text, language_code)
+def real_google_cloud_api(text: str, language_code: str, voice_name: str, cache_hits: List[int], api_calls: List[int]) -> Path:
+    """
+    Calls the Google Cloud Text-to-Speech API using the official client library
+    and specified voice, using the globally configured TTS_CLIENT.
+    """
+    global TTS_CLIENT
+    
+    real_file_path = get_cache_path(text, language_code, voice_name)
     if real_file_path.exists():
         cache_hits[0] += 1
         return real_file_path
 
-    api_calls[0] += 1
-    try:
-        tts = gTTS(text=text, lang=language_code, slow= False)
-        tts.save(real_file_path)
+    client = TTS_CLIENT 
+    if client is None:
+        print("    ❌ TTS Client is not initialized. Skipping API call.")
+        real_file_path.touch(exist_ok=True)
         return real_file_path
-    except Exception:
-        print(f"    ❌ gTTS Error: ({text[:15]}...)")
+
+    api_calls[0] += 1
+
+    # 1. Set the text input
+    synthesis_input = texttospeech.SynthesisInput(text=text)
+
+    # 2. Build the voice request, selecting the language and voice name
+    voice = texttospeech.VoiceSelectionParams(
+        language_code=language_code, 
+        name=voice_name
+    )
+
+    # 3. Select the type of audio file
+    audio_config = texttospeech.AudioConfig(
+        audio_encoding=texttospeech.AudioEncoding.MP3
+    )
+
+    # 4. Perform the text-to-speech request
+    try:
+        response = client.synthesize_speech(
+            input=synthesis_input, voice=voice, audio_config=audio_config
+        )
+
+        # 5. The response's audio_content is binary.
+        with open(real_file_path, "wb") as out:
+            out.write(response.audio_content)
+            
+        return real_file_path
+        
+    except Exception as e:
+        print(f"    ❌ Google Cloud TTS Error for '{text[:15]}...': {e}")
+        # Create a dummy file if the call fails to prevent retries
         real_file_path.touch(exist_ok=True)
         return real_file_path
 
@@ -266,20 +313,20 @@ def pre_cache_day_segments(full_schedule: List[ScheduleItem], use_real_tts_mode:
     cache_hits = [0]
     api_calls = [0]
 
-    tts_func = real_gtts_api if use_real_tts_mode else mock_google_tts
-    unique_segments: Set[Tuple[str, str]] = set()
+    tts_func = real_google_cloud_api if use_real_tts_mode else mock_google_tts
+    unique_segments: Set[Tuple[str, str, str]] = set()
 
     content_keys = Config.get_content_keys()
 
     for item in full_schedule:
         for key in content_keys:
             text_content = item.get(key)
-            full_lang_code = Config.get_lang_code(key)
-            segment_tuple = (text_content, full_lang_code)
+            full_lang_code, voice_name = Config.get_lang_config(key)
+            segment_tuple = (text_content, full_lang_code, voice_name)
 
             if text_content is not None and isinstance(text_content, str) and segment_tuple not in unique_segments:
                 try:
-                    tts_func(text_content, full_lang_code, cache_hits, api_calls)
+                    tts_func(text_content, full_lang_code, voice_name, cache_hits, api_calls)
                     unique_segments.add(segment_tuple)
                 except Exception as e:
                     print(f"    ❌ Error pre-caching: {e}")
@@ -298,7 +345,7 @@ def generate_audio_from_template(
 
     output_filename = f"{template_name}.mp3"
     output_path = day_path / output_filename
-    expected_duration_sec: float = 0.0 # Correct variable initialized here
+    expected_duration_sec: float = 0.0
     is_real_mode = use_real_concat_mode
 
     if is_real_mode:
@@ -315,8 +362,8 @@ def generate_audio_from_template(
 
             if action_type == 'CONTENT':
                 text_content = item.get(segment_key, "")
-                full_lang_code = Config.get_lang_code(segment_key)
-                cached_path = get_cache_path(text_content, full_lang_code)
+                full_lang_code, voice_name = Config.get_lang_config(segment_key)
+                cached_path = get_cache_path(text_content, full_lang_code, voice_name)
 
                 segment_duration_ms = Config.MOCK_AVG_FILE_DURATION_SEC * 1000.0
 
@@ -325,14 +372,12 @@ def generate_audio_from_template(
                     # --- MEMORY CACHE LOOKUP ---
                     if cached_path in AUDIO_SEGMENT_CACHE:
                         segment_audio = AUDIO_SEGMENT_CACHE[cached_path]
-                        # print(f"    [Cache Hit in RAM: {segment_key}]")
 
                     elif cached_path.exists() and cached_path.stat().st_size > 0:
                         try:
                             # Load from Disk (Cache Miss)
                             segment_audio = AudioSegment.from_mp3(cached_path)
                             AUDIO_SEGMENT_CACHE[cached_path] = segment_audio # Store in RAM
-                            # print(f"    [Cache Miss, Loaded from Disk: {segment_key}]")
                         except Exception:
                             # Fallback if corrupt
                             segment_audio = AudioSegment.silent(duration=100)
@@ -370,7 +415,6 @@ def generate_audio_from_template(
         except Exception as e:
             print(f"  ❌ FAILED TO EXPORT FINAL AUDIO: {e}")
 
-    # FIX: Corrected variable name from 'expected_dur' to 'expected_duration_sec'
     return output_path, expected_duration_sec
 
 
@@ -381,7 +425,6 @@ def verify_audio_duration_integrity(file_path: Path, expected_duration_sec: floa
 
     if REAL_CONCAT_AVAILABLE:
         try:
-            # We don't use the memory cache here as we are loading the FINAL large file
             audio = AudioSegment.from_mp3(file_path)
             actual_duration_sec = len(audio) / 1000.0
             diff = abs(actual_duration_sec - expected_duration_sec)
@@ -404,10 +447,7 @@ def load_and_validate_source_data() -> Tuple[List[ScheduleItem], int]:
             reader = csv.DictReader(f)
             data = list(reader)
         
-        # Get content keys dynamically (sorted for consistent check)
         content_keys = Config.get_content_keys()
-        
-        # Determine all expected header fields
         expected_fields = set(content_keys + ['StudyDay'])
         
         if not data:
@@ -422,7 +462,6 @@ def load_and_validate_source_data() -> Tuple[List[ScheduleItem], int]:
             print(f"    ❌ Actual fields in CSV: {list(actual_fields)}")
             return [], 0
 
-        # Ensure all required keys exist and cast StudyDay to int
         validated_data: List[ScheduleItem] = []
         for item in data:
             if all(key in item for key in content_keys) and 'StudyDay' in item:
@@ -444,7 +483,6 @@ def load_and_validate_source_data() -> Tuple[List[ScheduleItem], int]:
 def generate_full_repetition_schedule(master_data: List[ScheduleItem], max_day: int) -> Dict[int, List[ScheduleItem]]:
     """
     Generates the pool of items available for a specific day.
-    Separates them by type (Review vs New).
     """
     schedules: Dict[int, List[ScheduleItem]] = {}
     history = [item.copy() for item in master_data]
@@ -463,7 +501,6 @@ def generate_full_repetition_schedule(master_data: List[ScheduleItem], max_day: 
                     'type': ScheduleType.REVIEW.value,
                     'repetition': 0
                 }
-                # Dynamically add content keys
                 review_item.update({key: item.get(key, '') for key in content_keys})
                 day_items.append(review_item)
 
@@ -475,7 +512,6 @@ def generate_full_repetition_schedule(master_data: List[ScheduleItem], max_day: 
                 'type': ScheduleType.NEW.value,
                 'repetition': 0
             }
-            # Dynamically add content keys
             new_item.update({key: item.get(key, '') for key in content_keys})
             day_items.append(new_item)
 
@@ -486,13 +522,11 @@ def generate_full_repetition_schedule(master_data: List[ScheduleItem], max_day: 
 def write_manifest_csv(day_path: Path, filename: str, schedule_data: List[ScheduleItem], pattern_string: str) -> bool:
     schedule_path = day_path / filename
     try:
-        # 1. Get the content keys from the pattern string in the correct order
         content_fieldnames = [
             key for key in pattern_string.split(Config.TEMPLATE_DELIMITER)
             if key and key not in Config.SPECIAL_SEGMENTS
         ]
         
-        # 2. Build the full fieldnames list
         fieldnames = ['sequence'] + content_fieldnames + ['StudyDay', 'type']
         
         with open(schedule_path, 'w', newline='', encoding='utf-8') as f:
@@ -500,7 +534,6 @@ def write_manifest_csv(day_path: Path, filename: str, schedule_data: List[Schedu
             writer.writeheader()
             for i, item in enumerate(schedule_data):
                 row = {'sequence': i + 1}
-                # Ensure only relevant fields from item are written
                 row.update({k: v for k, v in item.items() if k in fieldnames})
                 writer.writerow(row)
         return True
@@ -560,9 +593,28 @@ def is_day_complete(day: int) -> bool:
     return True
 
 def main_workflow():
-    print("## 📚 Language Learner Schedule Generator (v4.2 - NameError Fix) ##")
+    global TTS_CLIENT
+    print("## 📚 Language Learner Schedule Generator (v5.2 - API Key Auth Fixed) ##")
 
     use_real_tts_mode, use_real_concat_mode, is_initial_run = run_environment_check()
+    
+    # --- API Key Initialization ---
+    if use_real_tts_mode and CLOUD_TTS_AVAILABLE:
+        api_key = os.getenv('GOOGLE_API_KEY')
+        if not api_key:
+            print("\n[!!! FATAL ERROR !!!] GOOGLE_API_KEY environment variable is not set. Please set it to proceed with real TTS.")
+            sys.exit(1)
+        
+        # Configure client options and initialize the global client
+        options = ClientOptions(api_key=api_key)
+        try:
+            TTS_CLIENT = texttospeech.TextToSpeechClient(client_options=options)
+            print("✅ Google TTS Client initialized successfully with API Key.")
+        except Exception as e:
+            print(f"\n[!!! FATAL ERROR !!!] Error initializing Google TTS Client: {e}")
+            sys.exit(1)
+    # ------------------------------
+
     master_data, max_day = load_and_validate_source_data()
 
     if not master_data: return
