@@ -71,13 +71,13 @@ class Config:
 
     # --- Language Codes (The source of truth for language deduction) ---
     TARGET_LANG_CODE: str = 'da-DK'
-    BASE_LANG_CODE: str = 'en-US'
+    BASE_LANG_CODE: str = 'en-GB'
     
     # --- VOICE SELECTION: Using Google's high-quality Neural2/WaveNet voices ---
     # Danish (da-DK): 'da-DK-Neural2-D' is a great natural-sounding voice.
-    # English (en-US): 'en-US-Neural2-J' (female) or 'en-US-Neural2-I' (male) are excellent.
+    # English (en-US): 'en-GB-Neural2-J' (female) or 'en-GB-Neural2-I' (male) are excellent.
     TARGET_VOICE_NAME: str = 'da-DK-Neural2-D'
-    BASE_VOICE_NAME: str = 'en-US-Neural2-J'
+    BASE_VOICE_NAME: str = 'en-GB-Standard-B'
     
     # --- Repetition Parameters ---
     MACRO_REPETITION_INTERVALS: List[int] = [1, 3, 7, 14, 30, 60, 120, 240]
