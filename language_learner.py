@@ -86,7 +86,7 @@ class Config:
     # --- CORE TEMPLATE SOURCE ---
     # Key: (Pattern String, Repetition Count, Use Filtered Data Only?)
     AUDIO_TEMPLATES: Dict[str, Tuple[str, int, bool]] = {
-        "workout": ("SP W2 W1 L1 L2", 1, False),
+        "workout": ("SP W2 W1 L1 L2", 1, True),
         "review_forward": ("SP W2 W1 L1 L2", 1, False),
         "review_reverse": ("SP W2 W1 L2 L1", 1, False),
     }
