@@ -28,10 +28,9 @@ except ImportError:
     FFMPEG_AVAILABLE = False
 
 # =========================================================================
-# 0. Declarative Types and Enums (MOVED TO TOP TO FIX NAMEERROR)
+# 0. Declarative Types and Enums
 # =========================================================================
 
-# This must be defined before it is used in function type hints
 ScheduleItem = Dict[str, Any]
 
 class ScheduleType(Enum):
@@ -52,13 +51,12 @@ class Config:
     TARGET_LANG_CODE: str = 'da-DK'
     BASE_LANG_CODE: str = 'en-GB'
     
-    TARGET_VOICE_NAME: str = 'da-DK-Neural2-D' # The best Danish s I slow it down
-    BASE_VOICE_NAME: str = 'en-GB-Standard-B' #I don't high quaality English
+    TARGET_VOICE_NAME: str = 'da-DK-Neural2-D' 
+    BASE_VOICE_NAME: str = 'en-GB-Standard-B' 
     
     MACRO_REPETITION_INTERVALS: List[int] = [1, 3, 7, 14, 30, 60, 120, 240]
     MICRO_SPACING_INTERVALS: List[int] = [0, 3, 7, 14, 28]
 
-    # Pattern String, Repetition Count, Target Speed for L2
     AUDIO_TEMPLATES: Dict[str, Tuple[str, int, float]] = {
         "workout": ("SP W2 W1 L1 L2", 1, 0.7),
         "review_forward": ("SP W2 W1 L1 L2", 1, 1.0),
@@ -139,12 +137,11 @@ def mock_google_tts(text: str, language_code: str, voice_name: str, cache_hits: 
 # =========================================================================
 
 def pre_cache_day_segments(full_schedule: List[ScheduleItem], use_real_tts_mode: bool) -> None:
-    print("\n  - Pre-Caching unique audio segments...")
+    print("  - Pre-Caching unique audio segments...")
     cache_hits, api_calls = [0], [0]
     tts_func = real_google_cloud_api if use_real_tts_mode else mock_google_tts
     unique_requests: Set[Tuple[str, str, str, float]] = set()
 
-    # Get all speeds defined in templates for L2
     required_speeds = set(speed for _, _, speed in Config.AUDIO_TEMPLATES.values())
 
     for item in full_schedule:
@@ -159,8 +156,11 @@ def pre_cache_day_segments(full_schedule: List[ScheduleItem], use_real_tts_mode:
     for text, lang, voice, speed in unique_requests:
         if text: tts_func(text, lang, voice, cache_hits, api_calls, speed)
 
-def generate_audio_from_template(day_path: Path, template_name: str, pattern: str, data: List[ScheduleItem], use_concat: bool, template_speed: float) -> Tuple[Path, float]:
-    output_path = day_path / f"{template_name}.mp3"
+def generate_audio_from_template(day_path: Path, day_num: int, template_name: str, pattern: str, data: List[ScheduleItem], use_concat: bool, template_speed: float) -> Tuple[Path, float]:
+    # Refactored: Filename now padded to 3 digits (e.g., 001_workout.mp3)
+    padded_day = str(day_num).zfill(3)
+    output_path = day_path / f"{padded_day}_{template_name}.mp3"
+    
     expected_duration = 0.0
     final_audio = AudioSegment.empty() if use_concat else None
 
@@ -200,9 +200,12 @@ def generate_audio_from_template(day_path: Path, template_name: str, pattern: st
 # =========================================================================
 
 def process_day(day: int, full_schedule: List[ScheduleItem], use_tts: bool, use_concat: bool):
-    day_path = Config.OUTPUT_ROOT_DIR / f"day_{day}"
+    # Refactored: Folder now padded to 3 digits (e.g., day_001)
+    padded_day = str(day).zfill(3)
+    day_path = Config.OUTPUT_ROOT_DIR / f"day_{padded_day}"
+    
     day_path.mkdir(parents=True, exist_ok=True)
-    print(f"\n--- 📝 Day {day} ---")
+    print(f"\n--- 📝 Day {padded_day} ---")
     pre_cache_day_segments(full_schedule, use_tts)
 
     for name, (pattern, reps, speed) in Config.AUDIO_TEMPLATES.items():
@@ -211,9 +214,12 @@ def process_day(day: int, full_schedule: List[ScheduleItem], use_tts: bool, use_
         if not source: continue
 
         sequenced = generate_interleaved_schedule(source, reps, Config.MICRO_SPACING_INTERVALS)
-        write_manifest_csv(day_path, f"{name}_manifest.csv", sequenced, pattern)
-        path, dur = generate_audio_from_template(day_path, name, pattern, sequenced, use_concat, speed)
-        print(f"    - {name.upper()} Generated (L2 Speed: {speed})")
+        
+        # Manifest renamed for consistency: 00n_name_manifest.csv
+        write_manifest_csv(day_path, f"{padded_day}_{name}_manifest.csv", sequenced, pattern)
+        
+        path, dur = generate_audio_from_template(day_path, day, name, pattern, sequenced, use_concat, speed)
+        print(f"    - {padded_day}_{name.upper()} Generated (L2 Speed: {speed})")
 
 def generate_interleaved_schedule(items: List[ScheduleItem], repetitions: int, intervals: List[int]) -> List[ScheduleItem]:
     if not items or repetitions <= 0: return []
@@ -251,8 +257,10 @@ def generate_full_repetition_schedule(master: List[ScheduleItem], max_day: int) 
     return schedules
 
 def is_day_complete(day: int) -> bool:
-    path = Config.OUTPUT_ROOT_DIR / f"day_{day}"
-    return all((path / f"{t}.mp3").exists() for t in Config.AUDIO_TEMPLATES)
+    padded_day = str(day).zfill(3)
+    path = Config.OUTPUT_ROOT_DIR / f"day_{padded_day}"
+    # Looks for the new padded filename format
+    return all((path / f"{padded_day}_{t}.mp3").exists() for t in Config.AUDIO_TEMPLATES)
 
 def run_environment_check():
     if not Config.SOURCE_FILE.exists():
