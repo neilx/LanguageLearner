@@ -6,8 +6,6 @@ from pathlib import Path
 from typing import List, Dict, Any, Tuple, Set
 from enum import Enum
 
-# --- Google Cloud TTS Imports ---
-os.environ["GOOGLE_API_KEY"] = "AIzaSyDuKh9xBUUzkQty_ZRdhU9uV9EP7LD6i-Y"
 try:
     from google.cloud import texttospeech
     from google.api_core.client_options import ClientOptions
@@ -54,8 +52,8 @@ class Config:
     TARGET_LANG_CODE: str = 'da-DK'
     BASE_LANG_CODE: str = 'en-GB'
     
-    TARGET_VOICE_NAME: str = 'da-DK-Neural2-D'
-    BASE_VOICE_NAME: str = 'en-GB-Standard-B'
+    TARGET_VOICE_NAME: str = 'da-DK-Neural2-D' # The best Danish s I slow it down
+    BASE_VOICE_NAME: str = 'en-GB-Standard-B' #I don't high quaality English
     
     MACRO_REPETITION_INTERVALS: List[int] = [1, 3, 7, 14, 30, 60, 120, 240]
     MICRO_SPACING_INTERVALS: List[int] = [0, 3, 7, 14, 28]
