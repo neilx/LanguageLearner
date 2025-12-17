@@ -136,8 +136,7 @@ def mock_google_tts(text: str, language_code: str, voice_name: str, cache_hits: 
 # 3. Generation Logic
 # =========================================================================
 
-def pre_cache_day_segments(full_schedule: List[ScheduleItem], use_real_tts_mode: bool) -> None:
-    print("  - Pre-Caching unique audio segments...")
+def pre_cache_day_segments(full_schedule: List[ScheduleItem], use_real_tts_mode: bool) -> Tuple[int, int]:
     cache_hits, api_calls = [0], [0]
     tts_func = real_google_cloud_api if use_real_tts_mode else mock_google_tts
     unique_requests: Set[Tuple[str, str, str, float]] = set()
@@ -155,9 +154,10 @@ def pre_cache_day_segments(full_schedule: List[ScheduleItem], use_real_tts_mode:
 
     for text, lang, voice, speed in unique_requests:
         if text: tts_func(text, lang, voice, cache_hits, api_calls, speed)
+    
+    return cache_hits[0], api_calls[0]
 
 def generate_audio_from_template(day_path: Path, day_num: int, template_name: str, pattern: str, data: List[ScheduleItem], use_concat: bool, template_speed: float) -> Tuple[Path, float]:
-    # Refactored: Filename now padded to 3 digits (e.g., 001_workout.mp3)
     padded_day = str(day_num).zfill(3)
     output_path = day_path / f"{padded_day}_{template_name}.mp3"
     
@@ -199,27 +199,36 @@ def generate_audio_from_template(day_path: Path, day_num: int, template_name: st
 # 4. Workflow Helpers
 # =========================================================================
 
-def process_day(day: int, full_schedule: List[ScheduleItem], use_tts: bool, use_concat: bool):
-    # Refactored: Folder now padded to 3 digits (e.g., day_001)
+def process_day(day: int, full_schedule: List[ScheduleItem], use_tts: bool, use_concat: bool) -> float:
     padded_day = str(day).zfill(3)
     day_path = Config.OUTPUT_ROOT_DIR / f"day_{padded_day}"
-    
     day_path.mkdir(parents=True, exist_ok=True)
-    print(f"\n--- 📝 Day {padded_day} ---")
-    pre_cache_day_segments(full_schedule, use_tts)
+    
+    new_count = sum(1 for i in full_schedule if i['type'] == ScheduleType.NEW.value)
+    rev_count = len(full_schedule) - new_count
+    print(f"\n--- 📝 Day {padded_day} ({new_count} New, {rev_count} Review) ---")
 
+    hits, calls = pre_cache_day_segments(full_schedule, use_tts)
+    total_segments = hits + calls
+    hit_rate = (hits / total_segments * 100) if total_segments > 0 else 0
+    print(f"    - TTS Cache: {hit_rate:.1f}% hit rate ({calls} new calls)")
+
+    day_total_duration = 0.0
     for name, (pattern, reps, speed) in Config.AUDIO_TEMPLATES.items():
         is_filtered = (speed != 1.0)
         source = [i for i in full_schedule if i['type'] == ScheduleType.NEW.value] if is_filtered else full_schedule
         if not source: continue
 
         sequenced = generate_interleaved_schedule(source, reps, Config.MICRO_SPACING_INTERVALS)
-        
-        # Manifest renamed for consistency: 00n_name_manifest.csv
         write_manifest_csv(day_path, f"{padded_day}_{name}_manifest.csv", sequenced, pattern)
         
         path, dur = generate_audio_from_template(day_path, day, name, pattern, sequenced, use_concat, speed)
-        print(f"    - {padded_day}_{name.upper()} Generated (L2 Speed: {speed})")
+        day_total_duration += dur
+        
+        m, s = divmod(int(dur), 60)
+        print(f"    - {path.name:25} | {m:02d}:{s:02d}")
+    
+    return day_total_duration
 
 def generate_interleaved_schedule(items: List[ScheduleItem], repetitions: int, intervals: List[int]) -> List[ScheduleItem]:
     if not items or repetitions <= 0: return []
@@ -259,7 +268,6 @@ def generate_full_repetition_schedule(master: List[ScheduleItem], max_day: int) 
 def is_day_complete(day: int) -> bool:
     padded_day = str(day).zfill(3)
     path = Config.OUTPUT_ROOT_DIR / f"day_{padded_day}"
-    # Looks for the new padded filename format
     return all((path / f"{padded_day}_{t}.mp3").exists() for t in Config.AUDIO_TEMPLATES)
 
 def run_environment_check():
@@ -269,17 +277,46 @@ def run_environment_check():
             writer.writeheader()
             writer.writerow({'W2': 'sol', 'W1': 'sun', 'L1': 'The sun shines.', 'L2': 'Solen skinner.', 'StudyDay': 1})
     for p in [Config.OUTPUT_ROOT_DIR, Config.TTS_CACHE_DIR]: p.mkdir(exist_ok=True, parents=True)
-    return (Config.USE_REAL_TTS and CLOUD_TTS_AVAILABLE), (REAL_CONCAT_AVAILABLE and FFMPEG_AVAILABLE)
+    
+    use_tts = (Config.USE_REAL_TTS and CLOUD_TTS_AVAILABLE)
+    use_concat = (REAL_CONCAT_AVAILABLE and FFMPEG_AVAILABLE)
+    
+    print(f"--- 🚀 Environment Ready ---")
+    print(f"Engine: {'[LIVE] Google Cloud' if use_tts else '[MOCK] Logic-Only'}")
+    print(f"Audio:  {'[ENABLED] Merging MP3s' if use_concat else '[DISABLED] Metadata only'}")
+    print(f"Target: {Config.TARGET_LANG_CODE} ({Config.TARGET_VOICE_NAME})\n")
+    
+    return use_tts, use_concat
 
 def main_workflow():
     global TTS_CLIENT
     use_tts, use_concat = run_environment_check()
-    if use_tts: TTS_CLIENT = texttospeech.TextToSpeechClient(client_options=ClientOptions(api_key=os.getenv('GOOGLE_API_KEY')))
+    if use_tts: 
+        TTS_CLIENT = texttospeech.TextToSpeechClient(client_options=ClientOptions(api_key=os.getenv('GOOGLE_API_KEY')))
+    
     master, max_d = load_and_validate_source_data()
-    if not master: return
+    if not master: 
+        print("❌ Error: No source data found.")
+        return
+    
     schedules = generate_full_repetition_schedule(master, max_d)
+    
+    days_processed = 0
+    total_session_duration = 0.0
+
     for d in range(1, max_d + 1):
-        if not is_day_complete(d): process_day(d, schedules.get(d, []), use_tts, use_concat)
+        if not is_day_complete(d):
+            day_dur = process_day(d, schedules.get(d, []), use_tts, use_concat)
+            total_session_duration += day_dur
+            days_processed += 1
+
+    if days_processed == 0:
+        print(f"✅ All {max_d} days are up to date. No work to be done.")
+    else:
+        total_m, total_s = divmod(int(total_session_duration), 60)
+        print(f"\n--- ✅ Session Complete ---")
+        print(f"Days Generated: {days_processed}")
+        print(f"Total Audio:    {total_m}m {total_s}s")
 
 if __name__ == "__main__":
     main_workflow()
