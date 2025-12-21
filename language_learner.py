@@ -42,9 +42,14 @@ class ScheduleType(Enum):
 # =========================================================================
 
 class Config:
+    # --- iCloud Directory Configuration ---
+    ICLOUD_BASE = Path(r'C:\Users\neil_\iCloudDrive\LanguageLearner')
+    
     USE_REAL_TTS: bool = True
-    SOURCE_FILE: Path = Path('sentence_pairs.csv')
-    OUTPUT_ROOT_DIR: Path = Path('Days')
+    SOURCE_FILE: Path = ICLOUD_BASE / 'sentence_pairs.csv'
+    OUTPUT_ROOT_DIR: Path = ICLOUD_BASE / 'Days'
+    
+    # Keeping the cache local to the GitHub folder for speed
     TTS_CACHE_DIR: Path = Path('tts_cache')
     TTS_CACHE_FILE_EXT: str = '.mp3'
 
@@ -69,7 +74,6 @@ class Config:
     EXPLICIT_PAUSE_SEC: float = 1.0
     SEGMENT_ACTIONS: Dict[str, str] = {}
     MOCK_AVG_FILE_DURATION_SEC: float = 1.0
-    DURATION_TOLERANCE_SEC: float = 0.5
 
     @staticmethod
     def get_content_keys() -> List[str]:
@@ -140,27 +144,26 @@ def pre_cache_day_segments(full_schedule: List[ScheduleItem], use_real_tts_mode:
     cache_hits, api_calls = [0], [0]
     tts_func = real_google_cloud_api if use_real_tts_mode else mock_google_tts
     unique_requests: Set[Tuple[str, str, str, float]] = set()
-
     required_speeds = set(speed for _, _, speed in Config.AUDIO_TEMPLATES.values())
 
     for item in full_schedule:
         for key in Config.get_content_keys():
             text = item.get(key)
             lang, voice = Config.get_lang_config(key)
+            if not text: continue
             if key == 'L2':
                 for s in required_speeds: unique_requests.add((text, lang, voice, s))
             else:
                 unique_requests.add((text, lang, voice, 1.0))
 
     for text, lang, voice, speed in unique_requests:
-        if text: tts_func(text, lang, voice, cache_hits, api_calls, speed)
+        tts_func(text, lang, voice, cache_hits, api_calls, speed)
     
     return cache_hits[0], api_calls[0]
 
 def generate_audio_from_template(day_path: Path, day_num: int, template_name: str, pattern: str, data: List[ScheduleItem], use_concat: bool, template_speed: float) -> Tuple[Path, float]:
     padded_day = str(day_num).zfill(3)
     output_path = day_path / f"{padded_day}_{template_name}.mp3"
-    
     expected_duration = 0.0
     final_audio = AudioSegment.empty() if use_concat else None
 
@@ -247,12 +250,43 @@ def write_manifest_csv(day_path: Path, filename: str, data: List[ScheduleItem], 
         writer.writeheader()
         for i, item in enumerate(data): writer.writerow({'sequence': i + 1, **item})
 
+# --- ROBUST CSV LOADING ---
 def load_and_validate_source_data() -> Tuple[List[ScheduleItem], int]:
     if not Config.SOURCE_FILE.exists(): return [], 0
-    with open(Config.SOURCE_FILE, 'r', encoding='utf-8') as f:
-        data = list(csv.DictReader(f))
-    for i in data: i['StudyDay'] = int(i['StudyDay'])
-    return data, max((int(i['StudyDay']) for i in data), default=0)
+    
+    # Use 'utf-8-sig' to automatically strip Excel's BOM marks
+    with open(Config.SOURCE_FILE, 'r', encoding='utf-8-sig') as f:
+        # Sniff for delimiter (handles comma vs semicolon)
+        sample = f.read(2048)
+        f.seek(0)
+        try:
+            dialect = csv.Sniffer().sniff(sample, delimiters=',;')
+        except:
+            dialect = 'excel'
+            
+        reader = csv.DictReader(f, dialect=dialect)
+        # Strip invisible spaces from headers
+        if reader.fieldnames:
+            reader.fieldnames = [n.strip() for n in reader.fieldnames]
+            
+        data = []
+        for row in reader:
+            # Strip spaces from the values themselves
+            cleaned_row = {k.strip(): v.strip() for k, v in row.items() if k}
+            data.append(cleaned_row)
+
+    if not data:
+        return [], 0
+
+    try:
+        for i in data: 
+            i['StudyDay'] = int(i['StudyDay'])
+        return data, max((int(i['StudyDay']) for i in data), default=0)
+    except KeyError:
+        print(f"\n❌ ERROR: Key 'StudyDay' not found in your CSV.")
+        print(f"   Detected Columns: {list(data[0].keys())}")
+        print(f"   Check your column headers in: {Config.SOURCE_FILE}")
+        sys.exit(1)
 
 def generate_full_repetition_schedule(master: List[ScheduleItem], max_day: int) -> Dict[int, List[ScheduleItem]]:
     schedules = {}
@@ -271,20 +305,18 @@ def is_day_complete(day: int) -> bool:
     return all((path / f"{padded_day}_{t}.mp3").exists() for t in Config.AUDIO_TEMPLATES)
 
 def run_environment_check():
-    if not Config.SOURCE_FILE.exists():
-        with open(Config.SOURCE_FILE, 'w', newline='', encoding='utf-8') as f:
-            writer = csv.DictWriter(f, fieldnames=Config.get_content_keys() + ['StudyDay'])
-            writer.writeheader()
-            writer.writerow({'W2': 'sol', 'W1': 'sun', 'L1': 'The sun shines.', 'L2': 'Solen skinner.', 'StudyDay': 1})
-    for p in [Config.OUTPUT_ROOT_DIR, Config.TTS_CACHE_DIR]: p.mkdir(exist_ok=True, parents=True)
-    
+    Config.ICLOUD_BASE.mkdir(exist_ok=True, parents=True)
+    Config.OUTPUT_ROOT_DIR.mkdir(exist_ok=True, parents=True)
+    Config.TTS_CACHE_DIR.mkdir(exist_ok=True, parents=True)
+
     use_tts = (Config.USE_REAL_TTS and CLOUD_TTS_AVAILABLE)
     use_concat = (REAL_CONCAT_AVAILABLE and FFMPEG_AVAILABLE)
     
     print(f"--- 🚀 Environment Ready ---")
     print(f"Engine: {'[LIVE] Google Cloud' if use_tts else '[MOCK] Logic-Only'}")
     print(f"Audio:  {'[ENABLED] Merging MP3s' if use_concat else '[DISABLED] Metadata only'}")
-    print(f"Target: {Config.TARGET_LANG_CODE} ({Config.TARGET_VOICE_NAME})\n")
+    print(f"Target: {Config.TARGET_LANG_CODE} ({Config.TARGET_VOICE_NAME})")
+    print(f"Storage: {Config.ICLOUD_BASE}\n")
     
     return use_tts, use_concat
 
@@ -300,7 +332,6 @@ def main_workflow():
         return
     
     schedules = generate_full_repetition_schedule(master, max_d)
-    
     days_processed = 0
     total_session_duration = 0.0
 
@@ -311,7 +342,7 @@ def main_workflow():
             days_processed += 1
 
     if days_processed == 0:
-        print(f"✅ All {max_d} days are up to date. No work to be done.")
+        print(f"✅ All {max_d} days are up to date in iCloud.")
     else:
         total_m, total_s = divmod(int(total_session_duration), 60)
         print(f"\n--- ✅ Session Complete ---")
