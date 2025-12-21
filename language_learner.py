@@ -43,7 +43,7 @@ class ScheduleType(Enum):
 
 class Config:
     # --- iCloud Directory Configuration ---
-    ICLOUD_BASE = Path(r'C:\Users\neil_\iCloudDrive\LanguageLearner')
+    ICLOUD_BASE = Path(r'C:\Users\neil_\iCloudDrive\LanguageLearnerData')
     
     USE_REAL_TTS: bool = True
     SOURCE_FILE: Path = ICLOUD_BASE / 'sentence_pairs.csv'
