@@ -244,11 +244,20 @@ def generate_interleaved_schedule(items: List[ScheduleItem], repetitions: int, i
     return [item for key in sorted(arrays) for item in arrays[key]]
 
 def write_manifest_csv(day_path: Path, filename: str, data: List[ScheduleItem], pattern: str):
-    fields = ['sequence'] + [k for k in pattern.split(Config.TEMPLATE_DELIMITER) if k and k not in Config.SPECIAL_SEGMENTS] + ['StudyDay', 'type']
+    # 1. Identify the dynamic language segments (e.g., W1, L1, L2) from the pattern
+    content_keys = [k for k in pattern.split(Config.TEMPLATE_DELIMITER) if k and k not in Config.SPECIAL_SEGMENTS]
+    
+    # 2. Define exactly which fields we want in the CSV
+    # Added 'Imagery' and removed 'sequence' and 'type'
+    fields = content_keys + ['StudyDay', 'Imagery']
+    
     with open(day_path / filename, 'w', newline='', encoding='utf-8') as f:
+        # 'extrasaction=ignore' ensures that if 'type' or other keys exist in the data, 
+        # they won't be written to the CSV if they aren't in our 'fields' list.
         writer = csv.DictWriter(f, fieldnames=fields, extrasaction='ignore')
         writer.writeheader()
-        for i, item in enumerate(data): writer.writerow({'sequence': i + 1, **item})
+        for item in data:
+            writer.writerow(item)
 
 # --- ROBUST CSV LOADING ---
 def load_and_validate_source_data() -> Tuple[List[ScheduleItem], int]:
