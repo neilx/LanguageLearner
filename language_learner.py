@@ -46,8 +46,8 @@ class Config:
     ICLOUD_BASE = Path(r'C:\Users\neil_\iCloudDrive\LanguageLearnerData')
     
     USE_REAL_TTS: bool = True
-    SOURCE_FILE: Path = ICLOUD_BASE / 'sentence_pairs.csv'
-    OUTPUT_ROOT_DIR: Path = ICLOUD_BASE / 'Days'
+    SOURCE_FILE: Path = ICLOUD_BASE / 'sentence_pairs_simple.csv'
+    OUTPUT_ROOT_DIR: Path = ICLOUD_BASE / 'Days_simple'
     
     # Keeping the cache local to the GitHub folder for speed
     TTS_CACHE_DIR: Path = Path('tts_cache')
@@ -63,9 +63,16 @@ class Config:
     MICRO_SPACING_INTERVALS: List[int] = [0, 3, 7, 14, 28]
 
     AUDIO_TEMPLATES: Dict[str, Tuple[str, int, float]] = {
-        "workout": ("SP W2 W1 L1 L2", 1, 0.7),
-        "review_forward": ("SP W2 W1 L1 L2", 1, 1.0),
-        "review_reverse": ("SP W2 W1 L2 L1", 1, 1.0),
+        "workout_forward_transcribe!": ("L1 SP L2", 1, 0.7),
+        "workout_reverse_transcribe!": ("L2 SP L1", 1, 0.7),
+        "review_forward_transcribe": ("L1 SP L2", 1, 1.0),
+        "review_reverse_transcribe": ("L2 SP L1", 1, 1.0),
+
+        "workout_forward_tur": ("L1 SP L2 L2 L2 L2 L2", 1, 0.7),
+        "workout_reverse_tur": ("L2 L2 SP L1 L2 L2 L2", 1, 0.7),
+        "review_forward_tur": ("L1 L2 SP L2 L2 L2 L2", 1, 1.0),
+        "review_reverse_tur": ("L2 L2 SP L1 L2 L2 L2", 1, 1.0),
+
     }
 
     TEMPLATE_DELIMITER: str = ' '
