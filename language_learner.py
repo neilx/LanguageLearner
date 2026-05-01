@@ -271,8 +271,8 @@ def process_day(day: int, full_schedule: List[ScheduleItem], use_tts: bool, use_
             print(f"    - {path.name:25} | {len(full_schedule)} rows")
             continue
 
-        is_filtered = (speed != 1.0)
-        source = [i for i in full_schedule if i['type'] == ScheduleType.NEW.value] if is_filtered else full_schedule
+        target_type = ScheduleType.NEW.value if speed != 1.0 else ScheduleType.REVIEW.value
+        source = [i for i in full_schedule if i['type'] == target_type]
         if not source: continue
 
         sequenced = generate_interleaved_schedule(source, reps, Config.MICRO_SPACING_INTERVALS)
