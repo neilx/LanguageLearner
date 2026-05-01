@@ -82,10 +82,12 @@ class Config:
         "review_forward_transcribe":   ("L1 1.0s L2", 1, 1.0, "audio"),
         "review_reverse_transcribe":   ("L2 1.0s L1", 1, 1.0, "audio"),
 
-        "workout_forward_tur": ("L1 1.0s L2 L2 L2 L2 L2", 1, 0.7, "audio"),
-        "workout_reverse_tur": ("L2 L2 1.0s L1 L2 L2 L2", 1, 0.7, "audio"),
-        "review_forward_tur":  ("L1 L2 1.0s L2 L2 L2 L2", 1, 1.0, "audio"),
-        "review_reverse_tur":  ("L2 L2 1.0s L1 L2 L2 L2", 1, 1.0, "audio"),
+        "workout_forward_tur": ("L1 1.0s L2 L2 L2 L1 L2", 1, 0.7, "audio"),
+        "workout_reverse_tur": ("L2 L2 1.0s L1 L2 L1 L2", 1, 0.7, "audio"),
+        "review_forward_tur":  ("L1 L2 1.0s L2 L2 L1 L2", 1, 1.0, "audio"),
+        "review_reverse_tur":  ("L2 L2 1.0s L1 L2 L1 L2", 1, 1.0, "audio"),
+        "vocab_list": ("L1 L2", 1, 1.0, "csv"),
+
 
     }
 
