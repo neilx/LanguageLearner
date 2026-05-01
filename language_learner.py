@@ -76,16 +76,16 @@ class Config:
     MACRO_REPETITION_INTERVALS: List[int] = [1, 3, 7, 14, 30, 60, 120, 240]
     MICRO_SPACING_INTERVALS: List[int] = [0, 3, 7, 14, 28]
 
-    AUDIO_TEMPLATES: Dict[str, Tuple[str, int, float]] = {
-        "workout_forward_transcribe!": ("L1 1.0s L2", 1, 0.7),
-        "workout_reverse_transcribe!": ("L2 1.0s L1", 1, 0.7),
-        "review_forward_transcribe": ("L1 1.0s L2", 1, 1.0),
-        "review_reverse_transcribe": ("L2 1.0s L1", 1, 1.0),
+    TEMPLATES: Dict[str, Tuple[str, int, float, str]] = {
+        "workout_forward_transcribe!": ("L1 1.0s L2", 1, 0.7, "audio"),
+        "workout_reverse_transcribe!": ("L2 1.0s L1", 1, 0.7, "audio"),
+        "review_forward_transcribe":   ("L1 1.0s L2", 1, 1.0, "audio"),
+        "review_reverse_transcribe":   ("L2 1.0s L1", 1, 1.0, "audio"),
 
-        "workout_forward_tur": ("L1 1.0s L2 L2 L2 L2 L2", 1, 0.7),
-        "workout_reverse_tur": ("L2 L2 1.0s L1 L2 L2 L2", 1, 0.7),
-        "review_forward_tur": ("L1 L2 1.0s L2 L2 L2 L2", 1, 1.0),
-        "review_reverse_tur": ("L2 L2 1.0s L1 L2 L2 L2", 1, 1.0),
+        "workout_forward_tur": ("L1 1.0s L2 L2 L2 L2 L2", 1, 0.7, "audio"),
+        "workout_reverse_tur": ("L2 L2 1.0s L1 L2 L2 L2", 1, 0.7, "audio"),
+        "review_forward_tur":  ("L1 L2 1.0s L2 L2 L2 L2", 1, 1.0, "audio"),
+        "review_reverse_tur":  ("L2 L2 1.0s L1 L2 L2 L2", 1, 1.0, "audio"),
 
     }
 
@@ -97,7 +97,7 @@ class Config:
     @staticmethod
     def get_content_keys() -> List[str]:
         all_segments: Set[str] = set()
-        for pattern, _, _ in Config.AUDIO_TEMPLATES.values():
+        for pattern, _, _, _ in Config.TEMPLATES.values():
             all_segments.update(pattern.split(Config.TEMPLATE_DELIMITER))
         return sorted([k for k in all_segments if k and not _is_pause_token(k)])
 
@@ -162,10 +162,16 @@ def pre_cache_day_segments(full_schedule: List[ScheduleItem], use_real_tts_mode:
     cache_hits, api_calls = [0], [0]
     tts_func = real_google_cloud_api if use_real_tts_mode else mock_google_tts
     unique_requests: Set[Tuple[str, str, str, float]] = set()
-    required_speeds = set(speed for _, _, speed in Config.AUDIO_TEMPLATES.values())
+    required_speeds = set(speed for _, _, speed, ot in Config.TEMPLATES.values() if ot == 'audio')
 
+    audio_keys: Set[str] = set(
+        k for _, (pattern, _, _, ot) in Config.TEMPLATES.items()
+        if ot == 'audio'
+        for k in pattern.split(Config.TEMPLATE_DELIMITER)
+        if k and not _is_pause_token(k)
+    )
     for item in full_schedule:
-        for key in Config.get_content_keys():
+        for key in audio_keys:
             text = item.get(key)
             lang, voice = Config.get_lang_config(key)
             if not text: continue
@@ -224,6 +230,24 @@ def generate_audio_from_template(day_path: Path, day_num: int, template_name: st
 # 4. Workflow Helpers
 # =========================================================================
 
+def generate_csv_from_template(day_path: Path, day_num: int, template_name: str, pattern: str, data: List[ScheduleItem]) -> Path:
+    padded_day = str(day_num).zfill(3)
+    output_path = day_path / f"{padded_day}_{template_name}.csv"
+    seen: Set[str] = set()
+    content_keys = []
+    for k in pattern.split(Config.TEMPLATE_DELIMITER):
+        if k and not _is_pause_token(k) and k not in seen:
+            content_keys.append(k)
+            seen.add(k)
+    extra = [f for f in ('StudyDay', 'Imagery') if data and f in data[0]]
+    fields = content_keys + extra
+    with open(output_path, 'w', newline='', encoding='utf-8') as f:
+        writer = csv.DictWriter(f, fieldnames=fields, extrasaction='ignore')
+        writer.writeheader()
+        for item in data:
+            writer.writerow(item)
+    return output_path
+
 def process_day(day: int, full_schedule: List[ScheduleItem], use_tts: bool, use_concat: bool, audio_format: str = 'mp3') -> float:
     padded_day = str(day).zfill(3)
     day_path = Config.OUTPUT_ROOT_DIR / f"day_{padded_day}"
@@ -239,7 +263,12 @@ def process_day(day: int, full_schedule: List[ScheduleItem], use_tts: bool, use_
     print(f"    - TTS Cache: {hit_rate:.1f}% hit rate ({calls} new calls)")
 
     day_total_duration = 0.0
-    for name, (pattern, reps, speed) in Config.AUDIO_TEMPLATES.items():
+    for name, (pattern, reps, speed, output_type) in Config.TEMPLATES.items():
+        if output_type == 'csv':
+            path = generate_csv_from_template(day_path, day, name, pattern, full_schedule)
+            print(f"    - {path.name:25} | {len(full_schedule)} rows")
+            continue
+
         is_filtered = (speed != 1.0)
         source = [i for i in full_schedule if i['type'] == ScheduleType.NEW.value] if is_filtered else full_schedule
         if not source: continue
@@ -333,7 +362,11 @@ def generate_full_repetition_schedule(master: List[ScheduleItem], max_day: int) 
 def is_day_complete(day: int, audio_format: str = 'mp3') -> bool:
     padded_day = str(day).zfill(3)
     path = Config.OUTPUT_ROOT_DIR / f"day_{padded_day}"
-    return all((path / f"{padded_day}_{t}.{audio_format}").exists() for t in Config.AUDIO_TEMPLATES)
+    for name, (_, _, _, output_type) in Config.TEMPLATES.items():
+        ext = 'csv' if output_type == 'csv' else audio_format
+        if not (path / f"{padded_day}_{name}.{ext}").exists():
+            return False
+    return True
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="LanguageLearner audio generator")
@@ -355,8 +388,8 @@ def parse_args() -> argparse.Namespace:
                         help='Output audio format (default: mp3)')
     parser.add_argument('--zip', action='store_true',
                         help='Package all output files into a zip archive')
-    parser.add_argument('--template', default=next(iter(Config.AUDIO_TEMPLATES)),
-                        help=f"Template name for pairs mode (default: {next(iter(Config.AUDIO_TEMPLATES))}). Available: {', '.join(Config.AUDIO_TEMPLATES)}")
+    parser.add_argument('--template', default=next(iter(Config.TEMPLATES)),
+                        help=f"Template name for pairs mode (default: {next(iter(Config.TEMPLATES))}). Available: {', '.join(Config.TEMPLATES)}")
     parser.add_argument('--mock', action='store_true',
                         help='Force mock TTS — exercises logic and cache paths without real API calls')
     return parser.parse_args()
@@ -402,12 +435,12 @@ def sentence_pairs_workflow(template_name: str, use_tts: bool, use_concat: bool,
         print("❌ Error: No sentence pairs found.")
         return
 
-    if template_name not in Config.AUDIO_TEMPLATES:
-        available = ', '.join(Config.AUDIO_TEMPLATES.keys())
+    if template_name not in Config.TEMPLATES:
+        available = ', '.join(Config.TEMPLATES.keys())
         print(f"❌ Unknown template '{template_name}'.\n   Available: {available}")
         return
 
-    pattern, _, speed = Config.AUDIO_TEMPLATES[template_name]
+    pattern, _, speed, _ = Config.TEMPLATES[template_name]
     Config.OUTPUT_ROOT_DIR.mkdir(parents=True, exist_ok=True)
 
     print(f"--- 🎧 Sentence Pairs Mode ---")
