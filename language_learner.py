@@ -275,8 +275,7 @@ def process_day(day: int, full_schedule: List[ScheduleItem], use_tts: bool, use_
         source = [i for i in full_schedule if i['type'] == target_type]
         if not source: continue
 
-        sequenced = generate_interleaved_schedule(source, reps, Config.MICRO_SPACING_INTERVALS)
-        write_manifest_csv(day_path, f"{padded_day}_{name}_manifest.csv", sequenced, pattern)
+        sequenced = generate_interleaved_schedule(source, Config.MICRO_SPACING_INTERVALS[:reps - 1])
 
         path, dur = generate_audio_from_template(day_path, day, name, pattern, sequenced, use_concat, speed, audio_format)
         day_total_duration += dur
@@ -286,15 +285,20 @@ def process_day(day: int, full_schedule: List[ScheduleItem], use_tts: bool, use_
 
     return day_total_duration
 
-def generate_interleaved_schedule(items: List[ScheduleItem], repetitions: int, intervals: List[int]) -> List[ScheduleItem]:
-    if not items or repetitions <= 0: return []
-    use_ints = intervals[:repetitions]
-    arrays: Dict[int, List[ScheduleItem]] = {}
-    for pos, item in enumerate(items, 1):
-        indices = [pos + use_ints[0]]
-        for i in range(1, len(use_ints)): indices.append(indices[-1] + use_ints[i])
-        for idx in indices: arrays.setdefault(idx, []).append(item)
-    return [item for key in sorted(arrays) for item in arrays[key]]
+def generate_interleaved_schedule(items: List[ScheduleItem], intervals: List[int]) -> List[ScheduleItem]:
+    if not items:
+        return []
+    offsets = [0]
+    current_offset = 0
+    for interval in intervals:
+        current_offset += interval
+        offsets.append(current_offset)
+    full_schedule = []
+    for i, item in enumerate(items):
+        for offset in offsets:
+            full_schedule.append((i + offset, i, item))
+    full_schedule.sort(key=lambda x: (x[0], x[1]))
+    return [item for _, _, item in full_schedule]
 
 def write_manifest_csv(day_path: Path, filename: str, data: List[ScheduleItem], pattern: str):
     # 1. Identify the dynamic language segments (e.g., W1, L1, L2) from the pattern
