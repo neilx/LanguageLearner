@@ -2,6 +2,7 @@ import argparse
 import csv
 import hashlib
 import os
+import random
 import sys
 import zipfile
 from pathlib import Path
@@ -74,23 +75,20 @@ class Config:
     BASE_VOICE_NAME: str = 'en-GB-Standard-B' 
     
     MACRO_REPETITION_INTERVALS: List[int] = [1, 3, 7, 14, 30, 60, 120, 240]
-    MICRO_SPACING_INTERVALS: List[int] = [0, 3, 7, 14, 28]
-
     TEMPLATES: Dict[str, Tuple[str, int, float, str]] = {
         "workout_forward_transcribe!": ("L1 1.0s L2", 1, 0.7, "audio"),
         "workout_reverse_transcribe!": ("L2 1.0s L1", 1, 0.7, "audio"),
         "review_forward_transcribe":   ("L1 1.0s L2", 1, 1.0, "audio"),
         "review_reverse_transcribe":   ("L2 1.0s L1", 1, 1.0, "audio"),
 
-        "workout_forward_tur": ("L1 1.0s L2 L2 L2 L1 L2", 1, 0.7, "audio"),
-        "workout_reverse_tur": ("L2 L2 1.0s L1 L2 L1 L2", 1, 0.7, "audio"),
-        "review_forward_tur":  ("L1 L2 1.0s L2 L2 L1 L2", 1, 1.0, "audio"),
-        "review_reverse_tur":  ("L2 L2 1.0s L1 L2 L1 L2", 1, 1.0, "audio"),
+        "workout_forward_tur": ("L1 1.5s L2 L2 L2 L2", 1, 0.7, "audio"),
+        "workout_reverse_tur": ("L2 1.5s L1 L2 L2 L2", 1, 0.7, "audio"),
+        "review_forward_tur":  ("L1 1.0s L2 L2 L2 L2", 1, 1.0, "audio"),
+        "review_reverse_tur":  ("L2 1.0s L1 L2 L2 L2", 1, 1.0, "audio"),
         "vocab_list": ("L1 L2", 1, 1.0, "csv"),
 
 
     }
-
     TEMPLATE_DELIMITER: str = ' '
     CONTENT_PAUSE_BUFFER_SEC: float = 0.3
     SEGMENT_ACTIONS: Dict[str, str] = {}
@@ -241,9 +239,9 @@ def generate_csv_from_template(day_path: Path, day_num: int, template_name: str,
         if k and not _is_pause_token(k) and k not in seen:
             content_keys.append(k)
             seen.add(k)
-    extra = [f for f in ('StudyDay', 'Imagery') if data and f in data[0]]
+    extra = [f for f in (data[0].keys() if data else []) if f not in seen]
     fields = content_keys + extra
-    with open(output_path, 'w', newline='', encoding='utf-8') as f:
+    with open(output_path, 'w', newline='', encoding='utf-8-sig') as f:
         writer = csv.DictWriter(f, fieldnames=fields, extrasaction='ignore')
         writer.writeheader()
         for item in data:
@@ -255,6 +253,19 @@ def process_day(day: int, full_schedule: List[ScheduleItem], use_tts: bool, use_
     day_path = Config.OUTPUT_ROOT_DIR / f"day_{padded_day}"
     day_path.mkdir(parents=True, exist_ok=True)
 
+    missing = []
+    for name, (_, _, speed, ot) in Config.TEMPLATES.items():
+        ext = 'csv' if ot == 'csv' else audio_format
+        if (day_path / f"{padded_day}_{name}.{ext}").exists():
+            continue
+        if ot != 'csv':
+            target_type = ScheduleType.NEW.value if speed != 1.0 else ScheduleType.REVIEW.value
+            if not any(i['type'] == target_type for i in full_schedule):
+                continue
+        missing.append(name)
+    if not missing:
+        return 0.0
+
     new_count = sum(1 for i in full_schedule if i['type'] == ScheduleType.NEW.value)
     rev_count = len(full_schedule) - new_count
     print(f"\n--- 📝 Day {padded_day} ({new_count} New, {rev_count} Review) ---")
@@ -264,18 +275,26 @@ def process_day(day: int, full_schedule: List[ScheduleItem], use_tts: bool, use_
     hit_rate = (hits / total_segments * 100) if total_segments > 0 else 0
     print(f"    - TTS Cache: {hit_rate:.1f}% hit rate ({calls} new calls)")
 
+    review_items = [i for i in full_schedule if i['type'] == ScheduleType.REVIEW.value]
+    shuffled_review = random.sample(review_items, len(review_items))
+
     day_total_duration = 0.0
-    for name, (pattern, reps, speed, output_type) in Config.TEMPLATES.items():
+    for name, (pattern, _, speed, output_type) in Config.TEMPLATES.items():
+        ext = 'csv' if output_type == 'csv' else audio_format
+        output_file = day_path / f"{padded_day}_{name}.{ext}"
+        if output_file.exists():
+            continue
+
         if output_type == 'csv':
-            path = generate_csv_from_template(day_path, day, name, pattern, full_schedule)
-            print(f"    - {path.name:25} | {len(full_schedule)} rows")
+            path = generate_csv_from_template(day_path, day, name, pattern, shuffled_review)
+            print(f"    - {path.name:25} | {len(shuffled_review)} rows")
             continue
 
         target_type = ScheduleType.NEW.value if speed != 1.0 else ScheduleType.REVIEW.value
         source = [i for i in full_schedule if i['type'] == target_type]
         if not source: continue
 
-        sequenced = generate_interleaved_schedule(source, Config.MICRO_SPACING_INTERVALS[:reps - 1])
+        sequenced = shuffled_review if target_type == ScheduleType.REVIEW.value else list(source)
 
         path, dur = generate_audio_from_template(day_path, day, name, pattern, sequenced, use_concat, speed, audio_format)
         day_total_duration += dur
@@ -284,37 +303,6 @@ def process_day(day: int, full_schedule: List[ScheduleItem], use_tts: bool, use_
         print(f"    - {path.name:25} | {m:02d}:{s:02d}")
 
     return day_total_duration
-
-def generate_interleaved_schedule(items: List[ScheduleItem], intervals: List[int]) -> List[ScheduleItem]:
-    if not items:
-        return []
-    offsets = [0]
-    current_offset = 0
-    for interval in intervals:
-        current_offset += interval
-        offsets.append(current_offset)
-    full_schedule = []
-    for i, item in enumerate(items):
-        for offset in offsets:
-            full_schedule.append((i + offset, i, item))
-    full_schedule.sort(key=lambda x: (x[0], x[1]))
-    return [item for _, _, item in full_schedule]
-
-def write_manifest_csv(day_path: Path, filename: str, data: List[ScheduleItem], pattern: str):
-    # 1. Identify the dynamic language segments (e.g., W1, L1, L2) from the pattern
-    content_keys = [k for k in pattern.split(Config.TEMPLATE_DELIMITER) if k and not _is_pause_token(k)]
-    
-    # 2. Define exactly which fields we want in the CSV
-    # Added 'Imagery' and removed 'sequence' and 'type'
-    fields = content_keys + ['StudyDay', 'Imagery']
-    
-    with open(day_path / filename, 'w', newline='', encoding='utf-8') as f:
-        # 'extrasaction=ignore' ensures that if 'type' or other keys exist in the data, 
-        # they won't be written to the CSV if they aren't in our 'fields' list.
-        writer = csv.DictWriter(f, fieldnames=fields, extrasaction='ignore')
-        writer.writeheader()
-        for item in data:
-            writer.writerow(item)
 
 # --- ROBUST CSV LOADING ---
 def load_and_validate_source_data() -> Tuple[List[ScheduleItem], int]:
@@ -409,12 +397,15 @@ def apply_arg_overrides(args: argparse.Namespace) -> None:
     if args.target_voice: Config.TARGET_VOICE_NAME = args.target_voice
     if args.mock:         Config.USE_REAL_TTS = False
 
-def zip_output_dir(output_dir: Path) -> Path:
+def zip_output_dir(output_dir: Path, extra_files: List[Path] = []) -> Path:
     zip_path = output_dir.parent / f"{output_dir.name}.zip"
     with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
         for f in output_dir.rglob('*'):
             if f.is_file():
                 zf.write(f, f.relative_to(output_dir))
+        for f in extra_files:
+            if f.is_file():
+                zf.write(f, f.name)
     print(f"  📦 Packaged: {zip_path}")
     return zip_path
 
@@ -486,7 +477,7 @@ def sentence_pairs_workflow(template_name: str, use_tts: bool, use_concat: bool,
 
     print(f"\n✅ Generated {len(pairs)} files → {Config.OUTPUT_ROOT_DIR}")
     if do_zip:
-        zip_output_dir(Config.OUTPUT_ROOT_DIR)
+        zip_output_dir(Config.OUTPUT_ROOT_DIR, extra_files=[Config.SOURCE_FILE])
 
 def run_environment_check():
     Config.ICLOUD_BASE.mkdir(exist_ok=True, parents=True)
@@ -534,8 +525,9 @@ def main_workflow():
     for d in range(1, max_d + 1):
         if not is_day_complete(d, args.audio_format):
             day_dur = process_day(d, schedules.get(d, []), use_tts, use_concat, args.audio_format)
-            total_session_duration += day_dur
-            days_processed += 1
+            if day_dur > 0:
+                total_session_duration += day_dur
+                days_processed += 1
 
     if days_processed == 0:
         print(f"✅ All {max_d} days are up to date in iCloud.")
@@ -546,7 +538,7 @@ def main_workflow():
         print(f"Total Audio:    {total_m}m {total_s}s")
 
     if args.zip:
-        zip_output_dir(Config.OUTPUT_ROOT_DIR)
+        zip_output_dir(Config.OUTPUT_ROOT_DIR, extra_files=[Config.SOURCE_FILE])
 
 if __name__ == "__main__":
     main_workflow()
