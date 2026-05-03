@@ -5,19 +5,19 @@ import os
 import random
 import sys
 import zipfile
+from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Dict, Any, Tuple, Set
+from typing import Any, Callable, Dict, List, Set, Tuple
 from enum import Enum
 
 try:
     from google.cloud import texttospeech
     from google.api_core.client_options import ClientOptions
-    
     TTS_CLIENT = None
     CLOUD_TTS_AVAILABLE = True
 except ImportError:
     CLOUD_TTS_AVAILABLE = False
-    
+
 try:
     from pydub import AudioSegment
     REAL_CONCAT_AVAILABLE = True
@@ -53,27 +53,48 @@ def _parse_pause_sec(token: str) -> float:
     return float(token[:-1])
 
 # =========================================================================
-# 1. Configuration Constants
+# 1. Progress logging
+# GUI replaces this via set_log_callback() before calling main_workflow().
+# =========================================================================
+
+_log: Callable[[str], None] = print
+
+def set_log_callback(fn: Callable[[str], None]) -> None:
+    global _log
+    _log = fn
+
+# =========================================================================
+# 2. Run configuration
+# CLI builds this from argparse; GUI builds it directly.
+# =========================================================================
+
+@dataclass
+class RunConfig:
+    mode: str = 'sr'
+    audio_format: str = 'mp3'
+    do_zip: bool = False
+    template: str = ''
+
+# =========================================================================
+# 3. Configuration Constants
 # =========================================================================
 
 class Config:
-    # --- iCloud Directory Configuration ---
     ICLOUD_BASE = Path(r'C:\Users\neil_\iCloudDrive\LanguageLearnerData')
-    
+
     USE_REAL_TTS: bool = True
     SOURCE_FILE: Path = ICLOUD_BASE / 'sentence_pairs_simple.csv'
     OUTPUT_ROOT_DIR: Path = ICLOUD_BASE / 'Days_simple'
-    
-    # Keeping the cache local to the GitHub folder for speed
+
     TTS_CACHE_DIR: Path = Path('tts_cache')
     TTS_CACHE_FILE_EXT: str = '.mp3'
 
     TARGET_LANG_CODE: str = 'da-DK'
     BASE_LANG_CODE: str = 'en-GB'
-    
-    TARGET_VOICE_NAME: str = 'da-DK-Neural2-D' 
-    BASE_VOICE_NAME: str = 'en-GB-Standard-B' 
-    
+
+    TARGET_VOICE_NAME: str = 'da-DK-Neural2-D'
+    BASE_VOICE_NAME: str = 'en-GB-Standard-B'
+
     MACRO_REPETITION_INTERVALS: List[int] = [1, 3, 7, 14, 30, 60, 120, 240]
     TEMPLATES: Dict[str, Tuple[str, int, float, str]] = {
         "workout_forward_transcribe!": ("L1 1.0s L2", 1, 0.7, "audio"),
@@ -85,9 +106,7 @@ class Config:
         "workout_reverse_tur": ("L2 1.5s L1 L2 L2 L2", 1, 0.7, "audio"),
         "review_forward_tur":  ("L1 1.0s L2 L2 L2 L2", 1, 1.0, "audio"),
         "review_reverse_tur":  ("L2 1.0s L1 L2 L2 L2", 1, 1.0, "audio"),
-        "vocab_list": ("L1 L2", 1, 1.0, "csv"),
-
-
+        "vocab_list":          ("L1 L2",                1, 1.0, "csv"),
     }
     TEMPLATE_DELIMITER: str = ' '
     CONTENT_PAUSE_BUFFER_SEC: float = 0.3
@@ -110,10 +129,10 @@ class Config:
 Config.SEGMENT_ACTIONS.update({key: 'CONTENT' for key in Config.get_content_keys()})
 
 # =========================================================================
-# 2. TTS & Caching Logic
+# 4. TTS & Caching Logic
 # =========================================================================
 
-AUDIO_SEGMENT_CACHE: Dict[Path, AudioSegment] = {}
+AUDIO_SEGMENT_CACHE: Dict[Path, Any] = {}
 
 def get_cache_path(text: str, language_code: str, voice_name: str, speed: float = 1.0) -> Path:
     content_hash = hashlib.sha256(f"{text}{language_code}{voice_name}{speed}".encode()).hexdigest()
@@ -141,7 +160,7 @@ def real_google_cloud_api(text: str, language_code: str, voice_name: str, cache_
             out.write(response.audio_content)
         return real_file_path
     except Exception as e:
-        print(f"    ❌ TTS Error: {e}")
+        _log(f"    ❌ TTS Error: {e}")
         real_file_path.touch(exist_ok=True)
         return real_file_path
 
@@ -155,7 +174,7 @@ def mock_google_tts(text: str, language_code: str, voice_name: str, cache_hits: 
     return mock_file_path
 
 # =========================================================================
-# 3. Generation Logic
+# 5. Generation Logic
 # =========================================================================
 
 def pre_cache_day_segments(full_schedule: List[ScheduleItem], use_real_tts_mode: bool) -> Tuple[int, int]:
@@ -182,7 +201,7 @@ def pre_cache_day_segments(full_schedule: List[ScheduleItem], use_real_tts_mode:
 
     for text, lang, voice, speed in unique_requests:
         tts_func(text, lang, voice, cache_hits, api_calls, speed)
-    
+
     return cache_hits[0], api_calls[0]
 
 def _pydub_export_format(audio_format: str) -> str:
@@ -227,7 +246,7 @@ def generate_audio_from_template(day_path: Path, day_num: int, template_name: st
     return output_path, expected_duration
 
 # =========================================================================
-# 4. Workflow Helpers
+# 6. Workflow Helpers
 # =========================================================================
 
 def generate_csv_from_template(day_path: Path, day_num: int, template_name: str, pattern: str, data: List[ScheduleItem]) -> Path:
@@ -268,15 +287,15 @@ def process_day(day: int, full_schedule: List[ScheduleItem], use_tts: bool, use_
 
     new_count = sum(1 for i in full_schedule if i['type'] == ScheduleType.NEW.value)
     rev_count = len(full_schedule) - new_count
-    print(f"\n--- 📝 Day {padded_day} ({new_count} New, {rev_count} Review) ---")
+    _log(f"\n--- 📝 Day {padded_day} ({new_count} New, {rev_count} Review) ---")
 
     hits, calls = pre_cache_day_segments(full_schedule, use_tts)
     total_segments = hits + calls
     hit_rate = (hits / total_segments * 100) if total_segments > 0 else 0
-    print(f"    - TTS Cache: {hit_rate:.1f}% hit rate ({calls} new calls)")
+    _log(f"    - TTS Cache: {hit_rate:.1f}% hit rate ({calls} new calls)")
 
     review_items = [i for i in full_schedule if i['type'] == ScheduleType.REVIEW.value]
-    shuffled_review = random.sample(review_items, len(review_items))
+    shuffled_review = random.Random(day).sample(review_items, len(review_items))
 
     day_total_duration = 0.0
     for name, (pattern, _, speed, output_type) in Config.TEMPLATES.items():
@@ -287,7 +306,7 @@ def process_day(day: int, full_schedule: List[ScheduleItem], use_tts: bool, use_
 
         if output_type == 'csv':
             path = generate_csv_from_template(day_path, day, name, pattern, shuffled_review)
-            print(f"    - {path.name:25} | {len(shuffled_review)} rows")
+            _log(f"    - {path.name:25} | {len(shuffled_review)} rows")
             continue
 
         target_type = ScheduleType.NEW.value if speed != 1.0 else ScheduleType.REVIEW.value
@@ -300,47 +319,39 @@ def process_day(day: int, full_schedule: List[ScheduleItem], use_tts: bool, use_
         day_total_duration += dur
 
         m, s = divmod(int(dur), 60)
-        print(f"    - {path.name:25} | {m:02d}:{s:02d}")
+        _log(f"    - {path.name:25} | {m:02d}:{s:02d}")
 
     return day_total_duration
 
-# --- ROBUST CSV LOADING ---
 def load_and_validate_source_data() -> Tuple[List[ScheduleItem], int]:
-    if not Config.SOURCE_FILE.exists(): return [], 0
-    
-    # Use 'utf-8-sig' to automatically strip Excel's BOM marks
+    if not Config.SOURCE_FILE.exists():
+        return [], 0
+
     with open(Config.SOURCE_FILE, 'r', encoding='utf-8-sig') as f:
-        # Sniff for delimiter (handles comma vs semicolon)
         sample = f.read(2048)
         f.seek(0)
         try:
             dialect = csv.Sniffer().sniff(sample, delimiters=',;')
-        except:
+        except Exception:
             dialect = 'excel'
-            
         reader = csv.DictReader(f, dialect=dialect)
-        # Strip invisible spaces from headers
         if reader.fieldnames:
             reader.fieldnames = [n.strip() for n in reader.fieldnames]
-            
-        data = []
-        for row in reader:
-            # Strip spaces from the values themselves
-            cleaned_row = {k.strip(): v.strip() for k, v in row.items() if k}
-            data.append(cleaned_row)
+        data = [{k.strip(): v.strip() for k, v in row.items() if k} for row in reader]
 
     if not data:
         return [], 0
 
     try:
-        for i in data: 
+        for i in data:
             i['StudyDay'] = int(i['StudyDay'])
         return data, max((int(i['StudyDay']) for i in data), default=0)
     except KeyError:
-        print(f"\n❌ ERROR: Key 'StudyDay' not found in your CSV.")
-        print(f"   Detected Columns: {list(data[0].keys())}")
-        print(f"   Check your column headers in: {Config.SOURCE_FILE}")
-        sys.exit(1)
+        raise ValueError(
+            f"Key 'StudyDay' not found in your CSV.\n"
+            f"Detected columns: {list(data[0].keys())}\n"
+            f"Source file: {Config.SOURCE_FILE}"
+        )
 
 def generate_full_repetition_schedule(master: List[ScheduleItem], max_day: int) -> Dict[int, List[ScheduleItem]]:
     schedules = {}
@@ -362,41 +373,6 @@ def is_day_complete(day: int, audio_format: str = 'mp3') -> bool:
             return False
     return True
 
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="LanguageLearner audio generator")
-    parser.add_argument('--mode', choices=['sr', 'pairs'], default='sr',
-                        help="Workflow: 'sr' = spaced repetition (default), 'pairs' = sentence pairs")
-    parser.add_argument('--source', type=Path,
-                        help='Override source CSV path')
-    parser.add_argument('--output', type=Path,
-                        help='Override output directory')
-    parser.add_argument('--base-lang', dest='base_lang',
-                        help='Base language code (e.g. en-GB)')
-    parser.add_argument('--base-voice', dest='base_voice',
-                        help='Base voice name (e.g. en-GB-Standard-B)')
-    parser.add_argument('--target-lang', dest='target_lang',
-                        help='Target language code (e.g. da-DK)')
-    parser.add_argument('--target-voice', dest='target_voice',
-                        help='Target voice name (e.g. da-DK-Neural2-D)')
-    parser.add_argument('--format', choices=['mp3', 'm4a'], default='mp3', dest='audio_format',
-                        help='Output audio format (default: mp3)')
-    parser.add_argument('--zip', action='store_true',
-                        help='Package all output files into a zip archive')
-    parser.add_argument('--template', default=next(iter(Config.TEMPLATES)),
-                        help=f"Template name for pairs mode (default: {next(iter(Config.TEMPLATES))}). Available: {', '.join(Config.TEMPLATES)}")
-    parser.add_argument('--mock', action='store_true',
-                        help='Force mock TTS — exercises logic and cache paths without real API calls')
-    return parser.parse_args()
-
-def apply_arg_overrides(args: argparse.Namespace) -> None:
-    if args.source:       Config.SOURCE_FILE = args.source
-    if args.output:       Config.OUTPUT_ROOT_DIR = args.output
-    if args.base_lang:    Config.BASE_LANG_CODE = args.base_lang
-    if args.base_voice:   Config.BASE_VOICE_NAME = args.base_voice
-    if args.target_lang:  Config.TARGET_LANG_CODE = args.target_lang
-    if args.target_voice: Config.TARGET_VOICE_NAME = args.target_voice
-    if args.mock:         Config.USE_REAL_TTS = False
-
 def zip_output_dir(output_dir: Path, extra_files: List[Path] = []) -> Path:
     zip_path = output_dir.parent / f"{output_dir.name}.zip"
     with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
@@ -406,13 +382,12 @@ def zip_output_dir(output_dir: Path, extra_files: List[Path] = []) -> Path:
         for f in extra_files:
             if f.is_file():
                 zf.write(f, f.name)
-    print(f"  📦 Packaged: {zip_path}")
+    _log(f"  📦 Packaged: {zip_path}")
     return zip_path
 
 def load_sentence_pairs(source_file: Path) -> List[ScheduleItem]:
     if not source_file.exists():
-        print(f"❌ Source file not found: {source_file}")
-        return []
+        raise ValueError(f"Source file not found: {source_file}")
     with open(source_file, 'r', encoding='utf-8-sig') as f:
         sample = f.read(2048)
         f.seek(0)
@@ -426,28 +401,28 @@ def load_sentence_pairs(source_file: Path) -> List[ScheduleItem]:
         data = [{k.strip(): v.strip() for k, v in row.items() if k} for row in reader]
     return data
 
-def sentence_pairs_workflow(template_name: str, use_tts: bool, use_concat: bool, audio_format: str, do_zip: bool) -> None:
+def sentence_pairs_workflow(run_config: RunConfig, use_tts: bool, use_concat: bool) -> None:
     pairs = load_sentence_pairs(Config.SOURCE_FILE)
     if not pairs:
-        print("❌ Error: No sentence pairs found.")
-        return
+        raise ValueError("No sentence pairs found in source file.")
 
-    if template_name not in Config.TEMPLATES:
-        available = ', '.join(Config.TEMPLATES.keys())
-        print(f"❌ Unknown template '{template_name}'.\n   Available: {available}")
-        return
+    if run_config.template not in Config.TEMPLATES:
+        raise ValueError(
+            f"Unknown template '{run_config.template}'.\n"
+            f"Available: {', '.join(Config.TEMPLATES.keys())}"
+        )
 
-    pattern, _, speed, _ = Config.TEMPLATES[template_name]
+    pattern, _, speed, _ = Config.TEMPLATES[run_config.template]
     Config.OUTPUT_ROOT_DIR.mkdir(parents=True, exist_ok=True)
 
-    print(f"--- 🎧 Sentence Pairs Mode ---")
-    print(f"Template : {template_name}  ({pattern})")
-    print(f"Pairs    : {len(pairs)}")
+    _log(f"--- 🎧 Sentence Pairs Mode ---")
+    _log(f"Template : {run_config.template}  ({pattern})")
+    _log(f"Pairs    : {len(pairs)}")
 
     hits, calls = pre_cache_day_segments(pairs, use_tts)
     total_segments = hits + calls
     hit_rate = (hits / total_segments * 100) if total_segments > 0 else 0
-    print(f"TTS Cache: {hit_rate:.1f}% hit rate ({calls} new calls)\n")
+    _log(f"TTS Cache: {hit_rate:.1f}% hit rate ({calls} new calls)\n")
 
     content_keys = sorted(set(
         k for k in pattern.split(Config.TEMPLATE_DELIMITER)
@@ -457,16 +432,16 @@ def sentence_pairs_workflow(template_name: str, use_tts: bool, use_concat: bool,
 
     for idx, pair in enumerate(pairs, 1):
         _, dur = generate_audio_from_template(
-            Config.OUTPUT_ROOT_DIR, idx, template_name, pattern,
-            [pair], use_concat, speed, audio_format
+            Config.OUTPUT_ROOT_DIR, idx, run_config.template, pattern,
+            [pair], use_concat, speed, run_config.audio_format
         )
         padded = str(idx).zfill(3)
-        out_filename = f"{padded}_{template_name}.{audio_format}"
+        out_filename = f"{padded}_{run_config.template}.{run_config.audio_format}"
         row = {k: pair.get(k, '') for k in content_keys}
         row['filename'] = out_filename
         manifest_rows.append(row)
         m, s = divmod(int(dur), 60)
-        print(f"  {out_filename} | {m:02d}:{s:02d}")
+        _log(f"  {out_filename} | {m:02d}:{s:02d}")
 
     manifest_path = Config.OUTPUT_ROOT_DIR / "manifest.csv"
     fields = content_keys + ['filename']
@@ -475,70 +450,116 @@ def sentence_pairs_workflow(template_name: str, use_tts: bool, use_concat: bool,
         writer.writeheader()
         writer.writerows(manifest_rows)
 
-    print(f"\n✅ Generated {len(pairs)} files → {Config.OUTPUT_ROOT_DIR}")
-    if do_zip:
+    _log(f"\n✅ Generated {len(pairs)} files → {Config.OUTPUT_ROOT_DIR}")
+    if run_config.do_zip:
         zip_output_dir(Config.OUTPUT_ROOT_DIR, extra_files=[Config.SOURCE_FILE])
 
-def run_environment_check():
+def run_environment_check() -> Tuple[bool, bool]:
     Config.ICLOUD_BASE.mkdir(exist_ok=True, parents=True)
     Config.OUTPUT_ROOT_DIR.mkdir(exist_ok=True, parents=True)
     Config.TTS_CACHE_DIR.mkdir(exist_ok=True, parents=True)
 
     use_tts = (Config.USE_REAL_TTS and CLOUD_TTS_AVAILABLE)
     use_concat = (REAL_CONCAT_AVAILABLE and FFMPEG_AVAILABLE)
-    
-    print(f"--- 🚀 Environment Ready ---")
-    print(f"Engine: {'[LIVE] Google Cloud' if use_tts else '[MOCK] Logic-Only'}")
-    print(f"Audio:  {'[ENABLED] Merging MP3s' if use_concat else '[DISABLED] Metadata only'}")
-    print(f"Target: {Config.TARGET_LANG_CODE} ({Config.TARGET_VOICE_NAME})")
-    print(f"Storage: {Config.ICLOUD_BASE}\n")
-    
+
+    _log(f"--- 🚀 Environment Ready ---")
+    _log(f"Engine: {'[LIVE] Google Cloud' if use_tts else '[MOCK] Logic-Only'}")
+    _log(f"Audio:  {'[ENABLED] Merging MP3s' if use_concat else '[DISABLED] Metadata only'}")
+    _log(f"Target: {Config.TARGET_LANG_CODE} ({Config.TARGET_VOICE_NAME})")
+    _log(f"Storage: {Config.ICLOUD_BASE}\n")
+
     return use_tts, use_concat
 
-def main_workflow():
+# =========================================================================
+# 7. Entry Points
+# =========================================================================
+
+def main_workflow(run_config: RunConfig = None) -> None:
+    """Main entry point for both CLI and GUI. Raises ValueError on bad input."""
     global TTS_CLIENT
-    args = parse_args()
-    apply_arg_overrides(args)
+    if run_config is None:
+        run_config = RunConfig()
+
+    AUDIO_SEGMENT_CACHE.clear()
+    TTS_CLIENT = None
 
     use_tts, use_concat = run_environment_check()
 
-    if args.audio_format == 'm4a' and not use_concat:
-        print("⚠️  m4a requested but ffmpeg/pydub unavailable — falling back to mp3")
-        args.audio_format = 'mp3'
+    if run_config.audio_format == 'm4a' and not use_concat:
+        _log("⚠️  m4a requested but ffmpeg/pydub unavailable — falling back to mp3")
+        run_config.audio_format = 'mp3'
 
     if use_tts:
         TTS_CLIENT = texttospeech.TextToSpeechClient(client_options=ClientOptions(api_key=os.getenv('GOOGLE_API_KEY')))
 
-    if args.mode == 'pairs':
-        sentence_pairs_workflow(args.template, use_tts, use_concat, args.audio_format, args.zip)
+    if run_config.mode == 'pairs':
+        sentence_pairs_workflow(run_config, use_tts, use_concat)
         return
 
     master, max_d = load_and_validate_source_data()
     if not master:
-        print("❌ Error: No source data found.")
-        return
+        raise ValueError("No source data found.")
 
     schedules = generate_full_repetition_schedule(master, max_d)
     days_processed = 0
     total_session_duration = 0.0
 
     for d in range(1, max_d + 1):
-        if not is_day_complete(d, args.audio_format):
-            day_dur = process_day(d, schedules.get(d, []), use_tts, use_concat, args.audio_format)
+        if not is_day_complete(d, run_config.audio_format):
+            day_dur = process_day(d, schedules.get(d, []), use_tts, use_concat, run_config.audio_format)
             if day_dur > 0:
                 total_session_duration += day_dur
                 days_processed += 1
 
     if days_processed == 0:
-        print(f"✅ All {max_d} days are up to date in iCloud.")
+        _log(f"✅ All {max_d} days are up to date in iCloud.")
     else:
         total_m, total_s = divmod(int(total_session_duration), 60)
-        print(f"\n--- ✅ Session Complete ---")
-        print(f"Days Generated: {days_processed}")
-        print(f"Total Audio:    {total_m}m {total_s}s")
+        _log(f"\n--- ✅ Session Complete ---")
+        _log(f"Days Generated: {days_processed}")
+        _log(f"Total Audio:    {total_m}m {total_s}s")
 
-    if args.zip:
+    if run_config.do_zip:
         zip_output_dir(Config.OUTPUT_ROOT_DIR, extra_files=[Config.SOURCE_FILE])
 
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="LanguageLearner audio generator")
+    parser.add_argument('--mode', choices=['sr', 'pairs'], default='sr')
+    parser.add_argument('--source', type=Path)
+    parser.add_argument('--output', type=Path)
+    parser.add_argument('--base-lang', dest='base_lang')
+    parser.add_argument('--base-voice', dest='base_voice')
+    parser.add_argument('--target-lang', dest='target_lang')
+    parser.add_argument('--target-voice', dest='target_voice')
+    parser.add_argument('--format', choices=['mp3', 'm4a'], default='mp3', dest='audio_format')
+    parser.add_argument('--zip', action='store_true')
+    parser.add_argument('--template', default=next(iter(Config.TEMPLATES)))
+    parser.add_argument('--mock', action='store_true')
+    return parser.parse_args()
+
+def apply_arg_overrides(args: argparse.Namespace) -> None:
+    if args.source:       Config.SOURCE_FILE = args.source
+    if args.output:       Config.OUTPUT_ROOT_DIR = args.output
+    if args.base_lang:    Config.BASE_LANG_CODE = args.base_lang
+    if args.base_voice:   Config.BASE_VOICE_NAME = args.base_voice
+    if args.target_lang:  Config.TARGET_LANG_CODE = args.target_lang
+    if args.target_voice: Config.TARGET_VOICE_NAME = args.target_voice
+    if args.mock:         Config.USE_REAL_TTS = False
+
+def cli_main() -> None:
+    args = parse_args()
+    apply_arg_overrides(args)
+    run_config = RunConfig(
+        mode=args.mode,
+        audio_format=args.audio_format,
+        do_zip=args.zip,
+        template=args.template,
+    )
+    try:
+        main_workflow(run_config)
+    except ValueError as e:
+        print(f"❌ {e}")
+        sys.exit(1)
+
 if __name__ == "__main__":
-    main_workflow()
+    cli_main()
