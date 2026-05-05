@@ -80,7 +80,7 @@ class RunConfig:
 # =========================================================================
 
 class Config:
-    ICLOUD_BASE = Path(r'C:\Users\neil_\iCloudDrive\LanguageLearnerData')
+    ICLOUD_BASE = Path(r'C:\Users\neil_\Documents\GitHub\LanguageLearner')
 
     USE_REAL_TTS: bool = True
     SOURCE_FILE: Path = ICLOUD_BASE / 'sentence_pairs_simple.csv'
@@ -97,16 +97,29 @@ class Config:
 
     MACRO_REPETITION_INTERVALS: List[int] = [1, 3, 7, 14, 30, 60, 120, 240]
     TEMPLATES: Dict[str, Tuple[str, int, float, str]] = {
-        "workout_forward_transcribe!": ("L1 1.0s L2", 1, 0.7, "audio"),
-        "workout_reverse_transcribe!": ("L2 1.0s L1", 1, 0.7, "audio"),
-        "review_forward_transcribe":   ("L1 1.0s L2", 1, 1.0, "audio"),
-        "review_reverse_transcribe":   ("L2 1.0s L1", 1, 1.0, "audio"),
+        # -------------------
+        # TODAY (active learning)
+        # -------------------
+        "today":       ("L1 1.0s L2",          1, 0.7, "audio"),
+        "today_r":     ("L2 1.0s L1",          1, 0.7, "audio"),
 
-        "workout_forward_tur": ("L1 1.5s L2 L2 L2 L2", 1, 0.7, "audio"),
-        "workout_reverse_tur": ("L2 1.5s L1 L2 L2 L2", 1, 0.7, "audio"),
-        "review_forward_tur":  ("L1 1.0s L2 L2 L2 L2", 1, 1.0, "audio"),
-        "review_reverse_tur":  ("L2 1.0s L1 L2 L2 L2", 1, 1.0, "audio"),
-        "vocab_list":          ("L1 L2",                1, 1.0, "csv"),
+        # FLOW (passive repetition of today)
+        "today_flow":   ("L1 1.5s L2 L2 L2 L2", 1, 0.7, "audio"),
+        "today_flow_r": ("L2 1.5s L1 L2 L2 L2", 1, 0.7, "audio"),
+
+        # -------------------
+        # REVIEW (CSV-based spaced repetition)
+        # -------------------
+        "review":       ("L1 1.0s L2",          1, 1.0, "audio"),
+        "review_r":     ("L2 1.0s L1",          1, 1.0, "audio"),
+
+        "review_flow":   ("L1 1.0s L2 L2 L2 L2", 1, 1.0, "audio"),
+        "review_flow_r": ("L2 1.0s L1 L2 L2 L2", 1, 1.0, "audio"),
+
+        # -------------------
+        # VOCAB (CSV source only)
+        # -------------------
+        "review":        ("L1 L2",               1, 1.0, "csv"),
     }
     TEMPLATE_DELIMITER: str = ' '
     CONTENT_PAUSE_BUFFER_SEC: float = 0.3

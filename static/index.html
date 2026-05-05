@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Language Learner</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, sans-serif; max-width: 960px; margin: 2rem auto; padding: 0 1rem; background: #f5f5f5; color: #1a1a1a; }
+  h1 { margin-bottom: .5rem; }
+
+  .tabs { display: flex; gap: .25rem; margin-bottom: 1.25rem; border-bottom: 2px solid #e5e7eb; }
+  .tab { padding: .5rem 1.25rem; background: none; border: none; border-bottom: 2px solid transparent; margin-bottom: -2px; cursor: pointer; font-size: .95rem; color: #6b7280; border-radius: 0; }
+  .tab:hover { color: #1a1a1a; background: none; }
+  .tab.active { color: #2563eb; border-bottom-color: #2563eb; font-weight: 600; }
+
+  section { background: white; border-radius: 8px; padding: 1.5rem; margin-bottom: 1rem; box-shadow: 0 1px 3px rgba(0,0,0,.1); }
+  h2 { margin: 0 0 1rem; font-size: .85rem; text-transform: uppercase; letter-spacing: .07em; color: #666; }
+  h3 { margin: 0 0 .75rem; font-size: 1rem; }
+
+  .row { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
+  select, input[type=text], input[type=number], input[type=file] { padding: .4rem .6rem; border: 1px solid #ccc; border-radius: 4px; background: white; font-size: .9rem; }
+  label.check { display: flex; align-items: center; gap: .3rem; cursor: pointer; font-size: .9rem; }
+  .field { display: flex; flex-direction: column; gap: .3rem; margin-bottom: .75rem; }
+  .field label { font-size: .85rem; color: #555; font-weight: 500; }
+  .field input { width: 280px; }
+
+  button { padding: .4rem 1rem; background: #2563eb; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: .9rem; white-space: nowrap; }
+  button:hover { background: #1d4ed8; }
+  button:disabled { background: #93c5fd; cursor: not-allowed; }
+  button.sm    { font-size: .78rem; padding: .2rem .55rem; }
+  button.secondary { background: #6b7280; }
+  button.secondary:hover { background: #4b5563; }
+  button.danger { background: #dc2626; }
+  button.danger:hover { background: #b91c1c; }
+  button.ghost  { background: none; border: 1px solid #ccc; color: #374151; }
+  button.ghost:hover { background: #f3f4f6; }
+
+  #log { background: #111; color: #4ade80; font-family: monospace; font-size: .82rem; padding: 1rem; border-radius: 4px; height: 220px; overflow-y: auto; white-space: pre-wrap; margin-top: 1rem; }
+
+  /* Template table */
+  .tpl-table { width: 100%; border-collapse: collapse; font-size: .88rem; }
+  .tpl-table th { text-align: left; padding: .4rem .6rem; border-bottom: 2px solid #e5e7eb; color: #6b7280; font-size: .8rem; text-transform: uppercase; letter-spacing: .04em; white-space: nowrap; }
+  .tpl-table td { padding: .45rem .6rem; border-bottom: 1px solid #f3f4f6; vertical-align: middle; }
+  .tpl-table tr:last-child td { border-bottom: none; }
+  .tpl-table tr.disabled td { opacity: .45; }
+  .tpl-table td.actions { white-space: nowrap; display: flex; gap: .3rem; }
+  .badge { display: inline-block; font-size: .72rem; padding: .1rem .45rem; border-radius: 3px; font-weight: 600; }
+  .badge.default  { background: #dbeafe; color: #1d4ed8; }
+  .badge.custom   { background: #dcfce7; color: #15803d; }
+  .badge.modified { background: #fef9c3; color: #854d0e; }
+  .badge.disabled-badge { background: #fee2e2; color: #991b1b; }
+  code { font-family: monospace; background: #f3f4f6; padding: .1rem .3rem; border-radius: 3px; font-size: .85em; }
+
+  /* Edit form */
+  #tpl-form { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 1.25rem; margin-top: 1rem; }
+  #tpl-form h3 { margin-bottom: 1rem; }
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem 1.5rem; margin-bottom: 1rem; }
+  .form-grid .field { margin-bottom: 0; }
+  .form-grid .field.full { grid-column: 1 / -1; }
+  .form-grid input, .form-grid select { width: 100%; }
+  .hint { font-size: .8rem; color: #888; margin-top: .2rem; }
+
+  .file-day { margin-bottom: .75rem; }
+  .file-day h3 { margin: .5rem 0 .25rem; font-size: .9rem; color: #333; }
+  .file-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: .15rem; }
+  .file-list a { color: #2563eb; text-decoration: none; font-size: .82rem; font-family: monospace; }
+  .file-list a:hover { text-decoration: underline; }
+
+  em { color: #888; font-size: .9rem; }
+  hr { border: none; border-top: 1px solid #e5e7eb; margin: 1rem 0; }
+  .status-text { font-size: .9rem; color: #555; }
+  .save-msg { font-size: .85rem; color: #16a34a; margin-left: .5rem; display: none; }
+</style>
+</head>
+<body>
+<h1>Language Learner</h1>
+
+<nav class="tabs">
+  <button class="tab active" onclick="showTab('simple', this)">Simple</button>
+  <button class="tab" onclick="showTab('downloads', this)">Downloads</button>
+  <button class="tab" onclick="showTab('settings', this)">Settings</button>
+</nav>
+
+<!-- ── Simple ──────────────────────────────────────────────────────────── -->
+<div id="tab-simple">
+  <section>
+    <h2>Vocabulary CSV</h2>
+    <div class="row">
+      <input type="file" id="csv-file" accept=".csv">
+      <select id="csv-mode"><option value="replace">Replace</option><option value="append">Append</option></select>
+      <button onclick="uploadCsv()">Upload</button>
+      <span id="csv-status" class="status-text">—</span>
+    </div>
+  </section>
+
+  <section>
+    <h2>Run</h2>
+    <div class="row">
+      <select id="run-mode"><option value="sr">Spaced Repetition</option><option value="pairs">Pairs</option></select>
+      <select id="audio-format"><option value="mp3">MP3</option><option value="m4a">M4A</option></select>
+      <label class="check"><input type="checkbox" id="do-zip"> Zip output</label>
+      <button id="run-btn" onclick="runApp()">Run</button>
+    </div>
+    <div id="log"></div>
+  </section>
+
+  <section>
+    <h2>Download</h2>
+    <button id="btn-latest-simple" onclick="downloadLatest()" disabled>Download new files</button>
+  </section>
+</div>
+
+<!-- ── Downloads ───────────────────────────────────────────────────────── -->
+<div id="tab-downloads" style="display:none">
+  <section>
+    <h2>Download Output</h2>
+    <div class="row" style="margin-bottom:.75rem">
+      <button id="btn-latest-dl" onclick="downloadLatest()" disabled>Download new files</button>
+      <button class="secondary" onclick="downloadAll()">Download all</button>
+    </div>
+    <div class="row">
+      <input type="text" id="day-spec-dl" placeholder="e.g. 1-7, 9, 10" style="width:180px">
+      <button class="secondary" onclick="downloadDays()">Download selected days</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>Delete Days (force regeneration)</h2>
+    <div class="row">
+      <input type="text" id="day-spec-del" placeholder="e.g. 7, 14" style="width:180px">
+      <button class="danger" onclick="deleteDays()">Delete</button>
+    </div>
+    <p style="margin:.75rem 0 0;font-size:.85rem;color:#888">Deleted day folders will be regenerated on the next run.</p>
+  </section>
+
+  <section>
+    <h2>File Browser <button class="sm secondary" onclick="loadFiles()" style="margin-left:.5rem">Refresh</button></h2>
+    <div id="files"><em>Loading…</em></div>
+  </section>
+</div>
+
+<!-- ── Settings ────────────────────────────────────────────────────────── -->
+<div id="tab-settings" style="display:none">
+
+  <section>
+    <h2>Language &amp; Voice</h2>
+    <div class="form-grid">
+      <div class="field"><label>Base language code</label><input type="text" id="cfg-base-lang" placeholder="e.g. en-GB"></div>
+      <div class="field"><label>Base voice name</label><input type="text" id="cfg-base-voice" placeholder="e.g. en-GB-Standard-B"></div>
+      <div class="field"><label>Target language code</label><input type="text" id="cfg-target-lang" placeholder="e.g. da-DK"></div>
+      <div class="field"><label>Target voice name</label><input type="text" id="cfg-target-voice" placeholder="e.g. da-DK-Neural2-D"></div>
+    </div>
+    <div class="row">
+      <button onclick="saveConfig()">Save</button>
+      <span class="save-msg" id="save-msg-cfg">Saved ✓</span>
+    </div>
+  </section>
+
+  <section>
+    <h2>Templates</h2>
+    <div id="tpl-list"><em>Loading…</em></div>
+    <div id="tpl-form" style="display:none">
+      <h3 id="tpl-form-title">New Template</h3>
+      <div class="form-grid">
+        <div class="field full">
+          <label>Name</label>
+          <input type="text" id="tpl-name" placeholder="e.g. review_slow">
+          <div class="hint">Names ending in <code>!</code> use new words; all others use review items.</div>
+        </div>
+        <div class="field full">
+          <label>Pattern</label>
+          <input type="text" id="tpl-pattern" placeholder="e.g. L1 1.0s L2">
+          <div class="hint">Tokens: <code>L1</code> <code>L2</code> and pauses like <code>1.5s</code></div>
+        </div>
+        <div class="field">
+          <label>Repetitions</label>
+          <input type="number" id="tpl-reps" min="1" value="1" style="width:80px">
+        </div>
+        <div class="field">
+          <label>Speed</label>
+          <input type="number" id="tpl-speed" min="0.1" max="2.0" step="0.05" value="1.0" style="width:80px">
+          <div class="hint">1.0 = review, &lt;1.0 = workout</div>
+        </div>
+        <div class="field">
+          <label>Output type</label>
+          <select id="tpl-output-type" style="width:auto">
+            <option value="audio">Audio</option>
+            <option value="csv">CSV</option>
+          </select>
+        </div>
+      </div>
+      <div class="row">
+        <button onclick="submitTemplate()">Save Template</button>
+        <button class="ghost" onclick="cancelTemplateEdit()">Cancel</button>
+        <span class="save-msg" id="save-msg-tpl">Saved ✓</span>
+      </div>
+    </div>
+    <div style="margin-top:1rem">
+      <button class="secondary sm" onclick="newTemplate()">+ Add template</button>
+    </div>
+  </section>
+
+</div>
+
+<script>
+// ── Tab navigation ───────────────────────────────────────────────────────────
+function showTab(name, btn) {
+  ['simple','downloads','settings'].forEach(t =>
+    document.getElementById('tab-'+t).style.display = t === name ? '' : 'none');
+  document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  if (name === 'downloads') loadFiles();
+  if (name === 'settings')  { loadConfig(); loadTemplates(); }
+}
+
+async function api(url, opts = {}) {
+  return fetch(url, { credentials: 'same-origin', ...opts });
+}
+
+// ── CSV ──────────────────────────────────────────────────────────────────────
+async function loadStatus() {
+  try {
+    const { rows } = await (await api('/csv/info')).json();
+    document.getElementById('csv-status').textContent = rows === 0 ? 'No CSV uploaded' : `${rows} rows`;
+  } catch { document.getElementById('csv-status').textContent = '—'; }
+}
+
+async function uploadCsv() {
+  const file = document.getElementById('csv-file').files[0];
+  if (!file) { alert('Select a CSV file first.'); return; }
+  const fd = new FormData();
+  fd.append('file', file);
+  fd.append('mode', document.getElementById('csv-mode').value);
+  const { rows } = await (await api('/csv/upload', { method: 'POST', body: fd })).json();
+  document.getElementById('csv-status').textContent = `${rows} rows`;
+}
+
+// ── Run ──────────────────────────────────────────────────────────────────────
+async function runApp() {
+  const btn = document.getElementById('run-btn');
+  const log = document.getElementById('log');
+  btn.disabled = true; log.textContent = '';
+  const fd = new FormData();
+  fd.append('mode',         document.getElementById('run-mode').value);
+  fd.append('audio_format', document.getElementById('audio-format').value);
+  fd.append('do_zip',       document.getElementById('do-zip').checked ? 'true' : 'false');
+  try {
+    const res = await fetch('/run', { method: 'POST', body: fd, credentials: 'same-origin' });
+    if (res.status === 409) { log.textContent = '⚠️ A run is already in progress.'; return; }
+    if (!res.ok) { log.textContent = `❌ Server error ${res.status}`; return; }
+    const reader = res.body.getReader(); const decoder = new TextDecoder();
+    let buffer = '', done = false;
+    while (!done) {
+      const { done: sd, value } = await reader.read();
+      if (sd) break;
+      buffer += decoder.decode(value, { stream: true });
+      const parts = buffer.split('\n\n'); buffer = parts.pop();
+      for (const part of parts) {
+        if (!part.startsWith('data: ')) continue;
+        const msg = part.slice(6);
+        if (msg === '[DONE]') { done = true; checkLatest(); break; }
+        log.textContent += msg + '\n'; log.scrollTop = log.scrollHeight;
+      }
+    }
+  } catch (e) { log.textContent += `\n❌ ${e.message}`; }
+  finally { btn.disabled = false; }
+}
+
+// ── Downloads ────────────────────────────────────────────────────────────────
+async function checkLatest() {
+  try {
+    const { has_latest } = await (await api('/download/info')).json();
+    document.getElementById('btn-latest-simple').disabled = !has_latest;
+    document.getElementById('btn-latest-dl').disabled = !has_latest;
+  } catch {}
+}
+
+function downloadLatest() { window.location.href = '/download/latest'; }
+function downloadAll()    { window.location.href = '/download/all'; }
+
+async function downloadDays() {
+  const spec = document.getElementById('day-spec-dl').value.trim();
+  if (!spec) { alert('Enter day numbers, e.g. 1-7, 9, 10'); return; }
+  const fd = new FormData(); fd.append('spec', spec);
+  const res = await fetch('/download/days', { method: 'POST', body: fd, credentials: 'same-origin' });
+  if (!res.ok) { alert(((await res.json().catch(()=>({}))).detail) || 'No files found.'); return; }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = `days_${spec.replace(/\s/g,'')}.zip`; a.click();
+  URL.revokeObjectURL(url);
+}
+
+async function deleteDays() {
+  const spec = document.getElementById('day-spec-del').value.trim();
+  if (!spec) { alert('Enter day numbers to delete.'); return; }
+  if (!confirm(`Delete output for days: ${spec}?\n\nThey will be regenerated on the next run.`)) return;
+  const fd = new FormData(); fd.append('spec', spec);
+  const { deleted } = await (await api('/days/delete', { method: 'POST', body: fd })).json();
+  alert(deleted.length ? `Deleted day(s): ${deleted.join(', ')}` : 'No matching day folders found.');
+  loadFiles();
+}
+
+// ── File browser ─────────────────────────────────────────────────────────────
+async function loadFiles() {
+  const container = document.getElementById('files');
+  try {
+    const { days } = await (await api('/files')).json();
+    if (!days.length) { container.innerHTML = '<em>No output files yet.</em>'; return; }
+    container.innerHTML = days.map(d => `
+      <div class="file-day"><h3>${d.day}</h3>
+      <ul class="file-list">${d.files.map(f=>`<li><a href="/files/${d.day}/${f}" download>${f}</a></li>`).join('')}</ul>
+      </div>`).join('');
+  } catch { container.innerHTML = '<em>Could not load files.</em>'; }
+}
+
+// ── Language/voice config ────────────────────────────────────────────────────
+async function loadConfig() {
+  try {
+    const cfg = await (await api('/config')).json();
+    document.getElementById('cfg-base-lang').value    = cfg.base_lang    || '';
+    document.getElementById('cfg-base-voice').value   = cfg.base_voice   || '';
+    document.getElementById('cfg-target-lang').value  = cfg.target_lang  || '';
+    document.getElementById('cfg-target-voice').value = cfg.target_voice || '';
+  } catch {}
+}
+
+async function saveConfig() {
+  const fd = new FormData();
+  fd.append('base_lang',    document.getElementById('cfg-base-lang').value.trim());
+  fd.append('base_voice',   document.getElementById('cfg-base-voice').value.trim());
+  fd.append('target_lang',  document.getElementById('cfg-target-lang').value.trim());
+  fd.append('target_voice', document.getElementById('cfg-target-voice').value.trim());
+  await api('/config', { method: 'POST', body: fd });
+  flash('save-msg-cfg');
+}
+
+// ── Templates ────────────────────────────────────────────────────────────────
+let _editingName = null; // null = new template
+let _templates = [];     // cache for indexed onclick references
+
+async function loadTemplates() {
+  const container = document.getElementById('tpl-list');
+  try {
+    _templates = await (await api('/templates')).json();
+    if (!_templates.length) { container.innerHTML = '<em>No templates.</em>'; return; }
+
+    const rows = _templates.map((t, i) => {
+      const statusBadge = t.disabled
+        ? `<span class="badge disabled-badge">disabled</span>`
+        : '';
+      const typeBadge = t.is_default
+        ? (t.modified ? `<span class="badge modified">modified</span>` : `<span class="badge default">default</span>`)
+        : `<span class="badge custom">custom</span>`;
+
+      const toggleLabel = t.disabled ? 'Enable' : 'Disable';
+      const toggleClass = t.disabled ? 'ghost sm' : 'secondary sm';
+
+      let actions = `<button class="sm" onclick="editTemplate(${i})">Edit</button>`;
+      actions += `<button class="${toggleClass}" onclick="toggleTemplate('${esc(t.name)}', ${!t.disabled})">${toggleLabel}</button>`;
+      if (t.is_default && t.modified) {
+        actions += `<button class="ghost sm" onclick="resetTemplate('${esc(t.name)}')">Reset</button>`;
+      }
+      if (!t.is_default) {
+        actions += `<button class="danger sm" onclick="deleteTemplate('${esc(t.name)}')">Delete</button>`;
+      }
+
+      return `<tr class="${t.disabled ? 'disabled' : ''}">
+        <td><strong>${esc(t.name)}</strong> ${typeBadge} ${statusBadge}</td>
+        <td><code>${esc(t.pattern)}</code></td>
+        <td style="text-align:center">${t.reps}</td>
+        <td style="text-align:center">${t.speed}</td>
+        <td>${t.output_type}</td>
+        <td class="actions">${actions}</td>
+      </tr>`;
+    }).join('');
+
+    container.innerHTML = `<table class="tpl-table">
+      <thead><tr>
+        <th>Name</th><th>Pattern</th><th>Reps</th><th>Speed</th><th>Type</th><th>Actions</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+  } catch (e) { container.innerHTML = `<em>Could not load templates: ${e.message}</em>`; }
+}
+
+function editTemplate(i) {
+  const t = _templates[i];
+  _editingName = t.name;
+  document.getElementById('tpl-form-title').textContent = `Edit: ${t.name}`;
+  document.getElementById('tpl-name').value = t.name;
+  document.getElementById('tpl-name').disabled = t.is_default; // can't rename defaults
+  document.getElementById('tpl-pattern').value = t.pattern;
+  document.getElementById('tpl-reps').value = t.reps;
+  document.getElementById('tpl-speed').value = t.speed;
+  document.getElementById('tpl-output-type').value = t.output_type;
+  document.getElementById('tpl-form').style.display = '';
+  document.getElementById('tpl-form').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function newTemplate() {
+  _editingName = null;
+  document.getElementById('tpl-form-title').textContent = 'New Template';
+  document.getElementById('tpl-name').value = '';
+  document.getElementById('tpl-name').disabled = false;
+  document.getElementById('tpl-pattern').value = '';
+  document.getElementById('tpl-reps').value = 1;
+  document.getElementById('tpl-speed').value = 1.0;
+  document.getElementById('tpl-output-type').value = 'audio';
+  document.getElementById('tpl-form').style.display = '';
+  document.getElementById('tpl-form').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function cancelTemplateEdit() {
+  document.getElementById('tpl-form').style.display = 'none';
+  _editingName = null;
+}
+
+async function submitTemplate() {
+  const name = _editingName || document.getElementById('tpl-name').value.trim();
+  if (!name) { alert('Template name is required.'); return; }
+  const fd = new FormData();
+  fd.append('name',        name);
+  fd.append('pattern',     document.getElementById('tpl-pattern').value.trim());
+  fd.append('reps',        document.getElementById('tpl-reps').value);
+  fd.append('speed',       document.getElementById('tpl-speed').value);
+  fd.append('output_type', document.getElementById('tpl-output-type').value);
+  const res = await api('/templates/save', { method: 'POST', body: fd });
+  if (!res.ok) { alert((await res.json()).detail || 'Save failed.'); return; }
+  flash('save-msg-tpl');
+  cancelTemplateEdit();
+  loadTemplates();
+}
+
+async function toggleTemplate(name, disabled) {
+  const fd = new FormData();
+  fd.append('name', name); fd.append('disabled', disabled ? 'true' : 'false');
+  await api('/templates/toggle', { method: 'POST', body: fd });
+  loadTemplates();
+}
+
+async function resetTemplate(name) {
+  if (!confirm(`Reset "${name}" to its default values?`)) return;
+  const fd = new FormData(); fd.append('name', name);
+  await api('/templates/reset', { method: 'POST', body: fd });
+  loadTemplates();
+}
+
+async function deleteTemplate(name) {
+  if (!confirm(`Delete custom template "${name}"?`)) return;
+  const fd = new FormData(); fd.append('name', name);
+  await api('/templates/delete', { method: 'POST', body: fd });
+  loadTemplates();
+}
+
+// ── Utilities ────────────────────────────────────────────────────────────────
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+function flash(id) {
+  const el = document.getElementById(id);
+  el.style.display = 'inline';
+  setTimeout(() => el.style.display = 'none', 2000);
+}
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+checkLatest();
+loadStatus();
+</script>
+</body>
+</html>

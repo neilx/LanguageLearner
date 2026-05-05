@@ -1,3 +1,8 @@
 # Output and Cache Folders (Generated files)
 Days/
 tts_cache/
+
+# Server runtime data (not for version control)
+users.json
+data/
+*.mp3
