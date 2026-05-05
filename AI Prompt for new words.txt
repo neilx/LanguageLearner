@@ -1,34 +1,22 @@
-I am creating my daughter's starting Turkish vocabulary CSV file.
-Her context is as follows:
-
-28 years old
-PhD in Plant Biology
-Lives in a flat in Manchester
-Has a Turkish male flatmate who also has a PhD in plant  biology
-Both are vegan
-They are interested in cooking, arts and crafts, photography, and modern music
-She can practice Turkish around the apartment with the flatmate
-She will be visiting Turkey soon with her flatmate
-
+I am appending my current cumulative Danish vocabulary CSV file. 
 It uses the following columns and order: W2,W1,L1,L2,StudyDay,Note,IPA
-- W2 = Turkish word
+- W2 = Danish word
 - W1 = English word
 - L1 = English sentence
-- L2 = Turkish sentence
+- L2 = Danish sentence
 - StudyDay = integer
 - Note = idiomatic or grammatical notes
-- IPA = IPA for the Turkish word
-
+- IPA = IPA for Danish word
 ⚠️ Important Instructions:
-1. Generate a new list of 30 Turkish words for each of the 7 Study Days that are not already in the W2 column. 
+1. Generate a new list of 30 Danish words for each of 7 Study Days that are not in the W2 column already. 
 3. For each word, create:
-   - a natural, idiomatic Turkish phrase at beginner level in spoken style, inspired by her context (above) and mostly daily-life usefulness at home or while travelling Turkey. This is the L2 field
+   - a natural, idiomatic Danish sentence at beginner level in spoken style inspired by my context: blues guitar, improvisation, retired life, carnivore diet, exercise, daily-life usefulness. This is the L2 field
    - an English sentence translation of the word. This is the W1 field
-   - an English sentence translation of the Turkish sentence L1. This is the L1 field. L1 MUST be a translation of L2. It is useless otherwise.
+   - an English sentence translation of the Danish sentence L1. This is the L1 field. L1 MUST be a translation of L2. It is useless otherwise.
    - a short Note about unusual grammar, idiomatic usage, or context
-   - the IPA for the Turkish word
-4. Ensure **all fields are properly quoted if they contain commas**. 
+   - the IPA for the Danish word
+4. Ensure **all fields are properly quoted if they contain commas**. For example:
+   "Mit yndlingsmåltid er en tyk, velkrydret bøf"
 5. Keep **column order exactly**: W2,W1,L1,L2,StudyDay,Note,IPA
 6. Increment the StudyDay by 1 from the last StudyDay in the CSV.
-7. Check that each of the 7 StudyDays contains 30 sentence pairs
-8. Output the result as a **single CSV code-block ready to append** to my master file, or better as a complete CSV if you are able.
+7. Output the result as a csv file if possible or as a  **single CSV code-block ready to append** to my master file.

@@ -1,6 +1,7 @@
 import io
 import json
 import queue
+import re
 import shutil
 import tempfile
 import threading
@@ -8,7 +9,7 @@ import zipfile
 from pathlib import Path
 
 import bcrypt
-from fastapi import BackgroundTasks, Depends, FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import BackgroundTasks, Depends, FastAPI, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.staticfiles import StaticFiles
@@ -19,6 +20,7 @@ app = FastAPI()
 security = HTTPBasic()
 DATA_ROOT = Path("data")
 USERS_FILE = Path("users.json")
+_PROFILE_RE = re.compile(r'^[\w-]+$')
 _run_lock = threading.Lock()
 
 
@@ -36,21 +38,36 @@ def _get_user(creds: HTTPBasicCredentials = Depends(security)) -> str:
     return creds.username
 
 
+# ── Path helpers ──────────────────────────────────────────────────────────────
+
 def _user_path(username: str) -> Path:
     p = DATA_ROOT / username
     p.mkdir(parents=True, exist_ok=True)
     return p
 
 
+def _validate_profile(name: str) -> str:
+    if not name or not _PROFILE_RE.match(name) or name == "tts_cache":
+        raise HTTPException(400, "Profile name must contain only letters, numbers, hyphens or underscores")
+    return name
+
+
+def _profile_path(username: str, profile: str) -> Path:
+    _validate_profile(profile)
+    p = _user_path(username) / profile
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
 # ── User config helpers ───────────────────────────────────────────────────────
 
-def _load_user_config(username: str) -> dict:
-    f = _user_path(username) / "config.json"
+def _load_profile_config(username: str, profile: str) -> dict:
+    f = _profile_path(username, profile) / "config.json"
     return json.loads(f.read_text()) if f.exists() else {}
 
 
-def _save_user_config(username: str, config: dict) -> None:
-    (_user_path(username) / "config.json").write_text(json.dumps(config, indent=2))
+def _save_profile_config(username: str, profile: str, config: dict) -> None:
+    (_profile_path(username, profile) / "config.json").write_text(json.dumps(config, indent=2))
 
 
 # ── Misc helpers ──────────────────────────────────────────────────────────────
@@ -70,7 +87,6 @@ def _parse_day_spec(spec: str) -> list[int]:
 
 
 def _merged_templates(user_templates: dict) -> dict:
-    """Merge default templates with user overrides, respecting disabled flags."""
     merged = {}
     for name, (pattern, reps, speed, output_type) in ll.Config.TEMPLATES.items():
         override = user_templates.get(name, {})
@@ -101,16 +117,51 @@ def index():
     return FileResponse("static/index.html")
 
 
+# ── Profiles ──────────────────────────────────────────────────────────────────
+
+@app.get("/me")
+def me(username: str = Depends(_get_user)):
+    return {"username": username}
+
+
+@app.get("/profiles")
+def list_profiles(username: str = Depends(_get_user)):
+    user_dir = _user_path(username)
+    profiles = sorted(
+        d.name for d in user_dir.iterdir()
+        if d.is_dir() and d.name != "tts_cache"
+    )
+    return {"profiles": profiles}
+
+
+@app.post("/profiles")
+def create_profile(name: str = Form(...), username: str = Depends(_get_user)):
+    _validate_profile(name)
+    (_user_path(username) / name).mkdir(exist_ok=True)
+    return {"status": "ok", "name": name}
+
+
+@app.post("/profiles/delete")
+def delete_profile(name: str = Form(...), username: str = Depends(_get_user)):
+    _validate_profile(name)
+    profile_dir = _user_path(username) / name
+    if not profile_dir.exists():
+        raise HTTPException(404, "Profile not found")
+    shutil.rmtree(profile_dir)
+    return {"status": "ok"}
+
+
 # ── CSV ───────────────────────────────────────────────────────────────────────
 
 @app.post("/csv/upload")
 async def upload_csv(
+    profile: str = Query(...),
     file: UploadFile = File(...),
     mode: str = Form("replace"),
     username: str = Depends(_get_user),
 ):
     content = (await file.read()).decode("utf-8-sig")
-    dest = _user_path(username) / "source.csv"
+    dest = _profile_path(username, profile) / "source.csv"
     if mode == "append" and dest.exists():
         existing = dest.read_text(encoding="utf-8-sig").rstrip()
         lines = content.splitlines()
@@ -124,47 +175,61 @@ async def upload_csv(
 
 
 @app.get("/csv/info")
-def csv_info(username: str = Depends(_get_user)):
-    src = _user_path(username) / "source.csv"
+def csv_info(profile: str = Query(...), username: str = Depends(_get_user)):
+    src = _profile_path(username, profile) / "source.csv"
     if not src.exists():
         return {"rows": 0}
     lines = [l for l in src.read_text(encoding="utf-8-sig").splitlines() if l.strip()]
     return {"rows": max(0, len(lines) - 1)}
 
 
-# ── Config (language/voice) ───────────────────────────────────────────────────
+# ── Voices ────────────────────────────────────────────────────────────────────
+
+@app.get("/voices")
+def get_voices(lang: str, username: str = Depends(_get_user)):
+    try:
+        voices = ll.list_voices_for_language(lang)
+        return {"voices": voices}
+    except ValueError as e:
+        raise HTTPException(503, str(e))
+    except Exception as e:
+        raise HTTPException(500, f"TTS API error: {e}")
+
+
+# ── Config ────────────────────────────────────────────────────────────────────
 
 @app.get("/config")
-def get_config(username: str = Depends(_get_user)):
-    cfg = _load_user_config(username)
+def get_config(profile: str = Query(...), username: str = Depends(_get_user)):
+    cfg = _load_profile_config(username, profile)
     return {
-        "base_lang":   cfg.get("base_lang",   ll.Config.BASE_LANG_CODE),
-        "base_voice":  cfg.get("base_voice",  ll.Config.BASE_VOICE_NAME),
-        "target_lang": cfg.get("target_lang", ll.Config.TARGET_LANG_CODE),
-        "target_voice":cfg.get("target_voice",ll.Config.TARGET_VOICE_NAME),
+        "base_lang":    cfg.get("base_lang",    ll.Config.BASE_LANG_CODE),
+        "base_voice":   cfg.get("base_voice",   ll.Config.BASE_VOICE_NAME),
+        "target_lang":  cfg.get("target_lang",  ll.Config.TARGET_LANG_CODE),
+        "target_voice": cfg.get("target_voice", ll.Config.TARGET_VOICE_NAME),
     }
 
 
 @app.post("/config")
 def save_config(
+    profile: str = Query(...),
     base_lang: str = Form(...),
     base_voice: str = Form(...),
     target_lang: str = Form(...),
     target_voice: str = Form(...),
     username: str = Depends(_get_user),
 ):
-    cfg = _load_user_config(username)
+    cfg = _load_profile_config(username, profile)
     cfg.update({"base_lang": base_lang, "base_voice": base_voice,
                 "target_lang": target_lang, "target_voice": target_voice})
-    _save_user_config(username, cfg)
+    _save_profile_config(username, profile, cfg)
     return {"status": "ok"}
 
 
 # ── Templates ─────────────────────────────────────────────────────────────────
 
 @app.get("/templates")
-def get_templates(username: str = Depends(_get_user)):
-    user_templates = _load_user_config(username).get("templates", {})
+def get_templates(profile: str = Query(...), username: str = Depends(_get_user)):
+    user_templates = _load_profile_config(username, profile).get("templates", {})
     result = []
     for name, (pattern, reps, speed, output_type) in ll.Config.TEMPLATES.items():
         override = user_templates.get(name, {})
@@ -195,6 +260,7 @@ def get_templates(username: str = Depends(_get_user)):
 
 @app.post("/templates/save")
 def save_template(
+    profile: str = Query(...),
     name: str = Form(...),
     pattern: str = Form(...),
     reps: int = Form(...),
@@ -204,47 +270,54 @@ def save_template(
 ):
     if not name.strip():
         raise HTTPException(400, "Template name is required")
-    cfg = _load_user_config(username)
+    cfg = _load_profile_config(username, profile)
     templates = cfg.setdefault("templates", {})
     existing = templates.get(name, {})
     existing.update({"pattern": pattern, "reps": reps, "speed": speed, "output_type": output_type})
     existing.pop("disabled", None)
     templates[name] = existing
-    _save_user_config(username, cfg)
+    _save_profile_config(username, profile, cfg)
     return {"status": "ok"}
 
 
 @app.post("/templates/toggle")
 def toggle_template(
+    profile: str = Query(...),
     name: str = Form(...),
     disabled: str = Form(...),
     username: str = Depends(_get_user),
 ):
-    cfg = _load_user_config(username)
-    templates = cfg.setdefault("templates", {})
-    templates.setdefault(name, {})["disabled"] = disabled.lower() == "true"
-    _save_user_config(username, cfg)
+    cfg = _load_profile_config(username, profile)
+    cfg.setdefault("templates", {}).setdefault(name, {})["disabled"] = disabled.lower() == "true"
+    _save_profile_config(username, profile, cfg)
     return {"status": "ok"}
 
 
 @app.post("/templates/reset")
-def reset_template(name: str = Form(...), username: str = Depends(_get_user)):
-    """Remove user override, reverting a default template to its original values."""
+def reset_template(
+    profile: str = Query(...),
+    name: str = Form(...),
+    username: str = Depends(_get_user),
+):
     if name not in ll.Config.TEMPLATES:
         raise HTTPException(400, "Only default templates can be reset")
-    cfg = _load_user_config(username)
+    cfg = _load_profile_config(username, profile)
     cfg.get("templates", {}).pop(name, None)
-    _save_user_config(username, cfg)
+    _save_profile_config(username, profile, cfg)
     return {"status": "ok"}
 
 
 @app.post("/templates/delete")
-def delete_template(name: str = Form(...), username: str = Depends(_get_user)):
+def delete_template(
+    profile: str = Query(...),
+    name: str = Form(...),
+    username: str = Depends(_get_user),
+):
     if name in ll.Config.TEMPLATES:
         raise HTTPException(400, "Cannot delete a built-in template — disable it instead")
-    cfg = _load_user_config(username)
+    cfg = _load_profile_config(username, profile)
     cfg.get("templates", {}).pop(name, None)
-    _save_user_config(username, cfg)
+    _save_profile_config(username, profile, cfg)
     return {"status": "ok"}
 
 
@@ -252,8 +325,8 @@ def delete_template(name: str = Form(...), username: str = Depends(_get_user)):
 
 @app.post("/run")
 def run(
+    profile: str = Query(...),
     mode: str = Form("sr"),
-    audio_format: str = Form("mp3"),
     do_zip: str = Form("false"),
     username: str = Depends(_get_user),
 ):
@@ -261,26 +334,26 @@ def run(
         raise HTTPException(status_code=409, detail="A run is already in progress")
 
     user_path = _user_path(username)
+    profile_path = _profile_path(username, profile)
     log_q: queue.Queue = queue.Queue()
 
     def _run():
-        # Save original Config so we can restore after the run
         orig = {
-            "SOURCE_FILE":      ll.Config.SOURCE_FILE,
-            "OUTPUT_ROOT_DIR":  ll.Config.OUTPUT_ROOT_DIR,
-            "TTS_CACHE_DIR":    ll.Config.TTS_CACHE_DIR,
-            "BASE_LANG_CODE":   ll.Config.BASE_LANG_CODE,
-            "BASE_VOICE_NAME":  ll.Config.BASE_VOICE_NAME,
-            "TARGET_LANG_CODE": ll.Config.TARGET_LANG_CODE,
-            "TARGET_VOICE_NAME":ll.Config.TARGET_VOICE_NAME,
-            "TEMPLATES":        dict(ll.Config.TEMPLATES),
+            "SOURCE_FILE":       ll.Config.SOURCE_FILE,
+            "OUTPUT_ROOT_DIR":   ll.Config.OUTPUT_ROOT_DIR,
+            "TTS_CACHE_DIR":     ll.Config.TTS_CACHE_DIR,
+            "BASE_LANG_CODE":    ll.Config.BASE_LANG_CODE,
+            "BASE_VOICE_NAME":   ll.Config.BASE_VOICE_NAME,
+            "TARGET_LANG_CODE":  ll.Config.TARGET_LANG_CODE,
+            "TARGET_VOICE_NAME": ll.Config.TARGET_VOICE_NAME,
+            "TEMPLATES":         dict(ll.Config.TEMPLATES),
         }
         try:
-            ll.Config.SOURCE_FILE     = user_path / "source.csv"
-            ll.Config.OUTPUT_ROOT_DIR = user_path / "output"
-            ll.Config.TTS_CACHE_DIR   = user_path / "tts_cache"
+            ll.Config.SOURCE_FILE     = profile_path / "source.csv"
+            ll.Config.OUTPUT_ROOT_DIR = profile_path / "output"
+            ll.Config.TTS_CACHE_DIR   = user_path / "tts_cache"  # shared across profiles
 
-            cfg = _load_user_config(username)
+            cfg = _load_profile_config(username, profile)
             if cfg.get("base_lang"):    ll.Config.BASE_LANG_CODE   = cfg["base_lang"]
             if cfg.get("base_voice"):   ll.Config.BASE_VOICE_NAME  = cfg["base_voice"]
             if cfg.get("target_lang"):  ll.Config.TARGET_LANG_CODE = cfg["target_lang"]
@@ -292,12 +365,11 @@ def run(
 
             ll.set_log_callback(lambda msg: log_q.put(msg))
 
-            output_dir = user_path / "output"
+            output_dir = profile_path / "output"
             before = set(output_dir.rglob("*")) if output_dir.exists() else set()
 
             ll.main_workflow(ll.RunConfig(
                 mode=mode,
-                audio_format=audio_format,
                 do_zip=do_zip.lower() == "true",
             ))
 
@@ -308,7 +380,7 @@ def run(
                 with zipfile.ZipFile(buf, "w", zipfile.ZIP_STORED) as zf:
                     for f in new_files:
                         zf.write(f, f.relative_to(output_dir))
-                (user_path / "latest_run.zip").write_bytes(buf.getvalue())
+                (profile_path / "latest_run.zip").write_bytes(buf.getvalue())
                 log_q.put(f"📦 {len(new_files)} new file(s) ready to download")
 
         except ValueError as e:
@@ -337,13 +409,13 @@ def run(
 # ── Downloads ─────────────────────────────────────────────────────────────────
 
 @app.get("/download/info")
-def download_info(username: str = Depends(_get_user)):
-    return {"has_latest": (_user_path(username) / "latest_run.zip").exists()}
+def download_info(profile: str = Query(...), username: str = Depends(_get_user)):
+    return {"has_latest": (_profile_path(username, profile) / "latest_run.zip").exists()}
 
 
 @app.get("/download/latest")
-def download_latest(username: str = Depends(_get_user)):
-    zip_path = _user_path(username) / "latest_run.zip"
+def download_latest(profile: str = Query(...), username: str = Depends(_get_user)):
+    zip_path = _profile_path(username, profile) / "latest_run.zip"
     if not zip_path.exists():
         raise HTTPException(404, "No recent run found")
     return FileResponse(zip_path, media_type="application/zip",
@@ -351,8 +423,12 @@ def download_latest(username: str = Depends(_get_user)):
 
 
 @app.get("/download/all")
-def download_all(background_tasks: BackgroundTasks, username: str = Depends(_get_user)):
-    output = _user_path(username) / "output"
+def download_all(
+    profile: str = Query(...),
+    background_tasks: BackgroundTasks = BackgroundTasks(),
+    username: str = Depends(_get_user),
+):
+    output = _profile_path(username, profile) / "output"
     files = sorted(f for f in output.rglob("*") if f.is_file()) if output.exists() else []
     if not files:
         raise HTTPException(404, "No output files yet")
@@ -364,16 +440,20 @@ def download_all(background_tasks: BackgroundTasks, username: str = Depends(_get
             zf.write(f, f.relative_to(output))
     background_tasks.add_task(tmp_path.unlink, missing_ok=True)
     return FileResponse(str(tmp_path), media_type="application/zip",
-                        headers={"Content-Disposition": "attachment; filename=all_days.zip"})
+                        headers={"Content-Disposition": f"attachment; filename={profile}_all.zip"})
 
 
 @app.post("/download/days")
-def download_days(spec: str = Form(...), username: str = Depends(_get_user)):
+def download_days(
+    profile: str = Query(...),
+    spec: str = Form(...),
+    username: str = Depends(_get_user),
+):
     try:
         day_nums = _parse_day_spec(spec)
     except ValueError:
         raise HTTPException(400, "Invalid day specification")
-    output = _user_path(username) / "output"
+    output = _profile_path(username, profile) / "output"
     files = []
     for d in day_nums:
         day_dir = output / f"day_{d:03d}"
@@ -388,18 +468,22 @@ def download_days(spec: str = Form(...), username: str = Depends(_get_user)):
     buf.seek(0)
     safe = spec.strip().replace(" ", "").replace(",", "_")
     return StreamingResponse(buf, media_type="application/zip",
-                             headers={"Content-Disposition": f"attachment; filename=days_{safe}.zip"})
+                             headers={"Content-Disposition": f"attachment; filename={profile}_days_{safe}.zip"})
 
 
 # ── Day management ────────────────────────────────────────────────────────────
 
 @app.post("/days/delete")
-def delete_days(spec: str = Form(...), username: str = Depends(_get_user)):
+def delete_days(
+    profile: str = Query(...),
+    spec: str = Form(...),
+    username: str = Depends(_get_user),
+):
     try:
         day_nums = _parse_day_spec(spec)
     except ValueError:
         raise HTTPException(400, "Invalid day specification")
-    output = _user_path(username) / "output"
+    output = _profile_path(username, profile) / "output"
     deleted = []
     for d in day_nums:
         day_dir = output / f"day_{d:03d}"
@@ -412,8 +496,8 @@ def delete_days(spec: str = Form(...), username: str = Depends(_get_user)):
 # ── File browser ──────────────────────────────────────────────────────────────
 
 @app.get("/files")
-def list_files(username: str = Depends(_get_user)):
-    output = _user_path(username) / "output"
+def list_files(profile: str = Query(...), username: str = Depends(_get_user)):
+    output = _profile_path(username, profile) / "output"
     if not output.exists():
         return {"days": []}
     days: dict = {}
@@ -425,8 +509,8 @@ def list_files(username: str = Depends(_get_user)):
 
 
 @app.get("/files/{filepath:path}")
-def download_file(filepath: str, username: str = Depends(_get_user)):
-    output = (_user_path(username) / "output").resolve()
+def download_file(filepath: str, profile: str = Query(...), username: str = Depends(_get_user)):
+    output = (_profile_path(username, profile) / "output").resolve()
     target = (output / filepath).resolve()
     if not str(target).startswith(str(output)):
         raise HTTPException(status_code=403)

@@ -63,6 +63,15 @@ def set_log_callback(fn: Callable[[str], None]) -> None:
     global _log
     _log = fn
 
+def list_voices_for_language(lang_code: str) -> List[str]:
+    if not CLOUD_TTS_AVAILABLE:
+        raise ValueError("Google Cloud TTS library is not installed")
+    client = texttospeech.TextToSpeechClient(
+        client_options=ClientOptions(api_key=os.getenv('GOOGLE_API_KEY'))
+    )
+    response = client.list_voices(language_code=lang_code)
+    return sorted(v.name for v in response.voices)
+
 # =========================================================================
 # 2. Run configuration
 # CLI builds this from argparse; GUI builds it directly.
@@ -71,7 +80,6 @@ def set_log_callback(fn: Callable[[str], None]) -> None:
 @dataclass
 class RunConfig:
     mode: str = 'sr'
-    audio_format: str = 'mp3'
     do_zip: bool = False
     template: str = ''
 
@@ -217,12 +225,9 @@ def pre_cache_day_segments(full_schedule: List[ScheduleItem], use_real_tts_mode:
 
     return cache_hits[0], api_calls[0]
 
-def _pydub_export_format(audio_format: str) -> str:
-    return 'mp4' if audio_format == 'm4a' else audio_format
-
-def generate_audio_from_template(day_path: Path, day_num: int, template_name: str, pattern: str, data: List[ScheduleItem], use_concat: bool, template_speed: float, audio_format: str = 'mp3') -> Tuple[Path, float]:
+def generate_audio_from_template(day_path: Path, day_num: int, template_name: str, pattern: str, data: List[ScheduleItem], use_concat: bool, template_speed: float) -> Tuple[Path, float]:
     padded_day = str(day_num).zfill(3)
-    output_path = day_path / f"{padded_day}_{template_name}.{audio_format}"
+    output_path = day_path / f"{padded_day}_{template_name}.mp3"
     expected_duration = 0.0
     final_audio = AudioSegment.empty() if use_concat else None
 
@@ -254,7 +259,7 @@ def generate_audio_from_template(day_path: Path, day_num: int, template_name: st
                 expected_duration += pause_sec
                 if use_concat: final_audio += AudioSegment.silent(duration=int(pause_sec * 1000))
 
-    if use_concat: final_audio.export(output_path, format=_pydub_export_format(audio_format))
+    if use_concat: final_audio.export(output_path, format='mp3')
     else: output_path.touch()
     return output_path, expected_duration
 
@@ -280,14 +285,14 @@ def generate_csv_from_template(day_path: Path, day_num: int, template_name: str,
             writer.writerow(item)
     return output_path
 
-def process_day(day: int, full_schedule: List[ScheduleItem], use_tts: bool, use_concat: bool, audio_format: str = 'mp3') -> float:
+def process_day(day: int, full_schedule: List[ScheduleItem], use_tts: bool, use_concat: bool) -> float:
     padded_day = str(day).zfill(3)
     day_path = Config.OUTPUT_ROOT_DIR / f"day_{padded_day}"
     day_path.mkdir(parents=True, exist_ok=True)
 
     missing = []
     for name, (_, _, speed, ot) in Config.TEMPLATES.items():
-        ext = 'csv' if ot == 'csv' else audio_format
+        ext = 'csv' if ot == 'csv' else 'mp3'
         if (day_path / f"{padded_day}_{name}.{ext}").exists():
             continue
         if ot != 'csv':
@@ -312,7 +317,7 @@ def process_day(day: int, full_schedule: List[ScheduleItem], use_tts: bool, use_
 
     day_total_duration = 0.0
     for name, (pattern, _, speed, output_type) in Config.TEMPLATES.items():
-        ext = 'csv' if output_type == 'csv' else audio_format
+        ext = 'csv' if output_type == 'csv' else 'mp3'
         output_file = day_path / f"{padded_day}_{name}.{ext}"
         if output_file.exists():
             continue
@@ -328,7 +333,7 @@ def process_day(day: int, full_schedule: List[ScheduleItem], use_tts: bool, use_
 
         sequenced = shuffled_review if target_type == ScheduleType.REVIEW.value else list(source)
 
-        path, dur = generate_audio_from_template(day_path, day, name, pattern, sequenced, use_concat, speed, audio_format)
+        path, dur = generate_audio_from_template(day_path, day, name, pattern, sequenced, use_concat, speed)
         day_total_duration += dur
 
         m, s = divmod(int(dur), 60)
@@ -377,11 +382,11 @@ def generate_full_repetition_schedule(master: List[ScheduleItem], max_day: int) 
         schedules[d] = items
     return schedules
 
-def is_day_complete(day: int, audio_format: str = 'mp3') -> bool:
+def is_day_complete(day: int) -> bool:
     padded_day = str(day).zfill(3)
     path = Config.OUTPUT_ROOT_DIR / f"day_{padded_day}"
     for name, (_, _, _, output_type) in Config.TEMPLATES.items():
-        ext = 'csv' if output_type == 'csv' else audio_format
+        ext = 'csv' if output_type == 'csv' else 'mp3'
         if not (path / f"{padded_day}_{name}.{ext}").exists():
             return False
     return True
@@ -446,10 +451,10 @@ def sentence_pairs_workflow(run_config: RunConfig, use_tts: bool, use_concat: bo
     for idx, pair in enumerate(pairs, 1):
         _, dur = generate_audio_from_template(
             Config.OUTPUT_ROOT_DIR, idx, run_config.template, pattern,
-            [pair], use_concat, speed, run_config.audio_format
+            [pair], use_concat, speed
         )
         padded = str(idx).zfill(3)
-        out_filename = f"{padded}_{run_config.template}.{run_config.audio_format}"
+        out_filename = f"{padded}_{run_config.template}.mp3"
         row = {k: pair.get(k, '') for k in content_keys}
         row['filename'] = out_filename
         manifest_rows.append(row)
@@ -498,10 +503,6 @@ def main_workflow(run_config: RunConfig = None) -> None:
 
     use_tts, use_concat = run_environment_check()
 
-    if run_config.audio_format == 'm4a' and not use_concat:
-        _log("⚠️  m4a requested but ffmpeg/pydub unavailable — falling back to mp3")
-        run_config.audio_format = 'mp3'
-
     if use_tts:
         TTS_CLIENT = texttospeech.TextToSpeechClient(client_options=ClientOptions(api_key=os.getenv('GOOGLE_API_KEY')))
 
@@ -518,8 +519,8 @@ def main_workflow(run_config: RunConfig = None) -> None:
     total_session_duration = 0.0
 
     for d in range(1, max_d + 1):
-        if not is_day_complete(d, run_config.audio_format):
-            day_dur = process_day(d, schedules.get(d, []), use_tts, use_concat, run_config.audio_format)
+        if not is_day_complete(d):
+            day_dur = process_day(d, schedules.get(d, []), use_tts, use_concat)
             if day_dur > 0:
                 total_session_duration += day_dur
                 days_processed += 1
@@ -544,7 +545,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('--base-voice', dest='base_voice')
     parser.add_argument('--target-lang', dest='target_lang')
     parser.add_argument('--target-voice', dest='target_voice')
-    parser.add_argument('--format', choices=['mp3', 'm4a'], default='mp3', dest='audio_format')
     parser.add_argument('--zip', action='store_true')
     parser.add_argument('--template', default=next(iter(Config.TEMPLATES)))
     parser.add_argument('--mock', action='store_true')
@@ -564,7 +564,6 @@ def cli_main() -> None:
     apply_arg_overrides(args)
     run_config = RunConfig(
         mode=args.mode,
-        audio_format=args.audio_format,
         do_zip=args.zip,
         template=args.template,
     )

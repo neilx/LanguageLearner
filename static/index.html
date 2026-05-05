@@ -7,7 +7,11 @@
 <style>
   * { box-sizing: border-box; }
   body { font-family: system-ui, sans-serif; max-width: 960px; margin: 2rem auto; padding: 0 1rem; background: #f5f5f5; color: #1a1a1a; }
-  h1 { margin-bottom: .5rem; }
+  h1 { margin: 0; }
+  .header { display: flex; align-items: center; gap: 1.5rem; margin-bottom: 1.25rem; flex-wrap: wrap; }
+  .profile-bar { display: flex; align-items: center; gap: .4rem; }
+  .profile-bar label { font-size: .85rem; color: #555; white-space: nowrap; }
+  #no-profiles-msg { background: #fef9c3; border: 1px solid #fde68a; border-radius: 6px; padding: .75rem 1rem; margin-bottom: 1rem; font-size: .9rem; }
 
   .tabs { display: flex; gap: .25rem; margin-bottom: 1.25rem; border-bottom: 2px solid #e5e7eb; }
   .tab { padding: .5rem 1.25rem; background: none; border: none; border-bottom: 2px solid transparent; margin-bottom: -2px; cursor: pointer; font-size: .95rem; color: #6b7280; border-radius: 0; }
@@ -74,9 +78,21 @@
 </style>
 </head>
 <body>
-<h1>Language Learner</h1>
+<div class="header">
+  <h1>Language Learner</h1>
+  <span id="username-display" style="font-size:.9rem;color:#6b7280"></span>
+  <div class="profile-bar">
+    <label>Profile:</label>
+    <select id="profile-select" onchange="switchProfile(this.value)" style="min-width:130px"></select>
+    <button class="sm" onclick="promptNewProfile()">+ New</button>
+    <button class="sm danger" onclick="promptDeleteProfile()">Delete</button>
+  </div>
+</div>
+<div id="no-profiles-msg" style="display:none">
+  No profiles yet. Create one to get started.
+</div>
 
-<nav class="tabs">
+<nav class="tabs" style="display:none">
   <button class="tab active" onclick="showTab('simple', this)">Simple</button>
   <button class="tab" onclick="showTab('downloads', this)">Downloads</button>
   <button class="tab" onclick="showTab('settings', this)">Settings</button>
@@ -97,9 +113,7 @@
   <section>
     <h2>Run</h2>
     <div class="row">
-      <select id="run-mode"><option value="sr">Spaced Repetition</option><option value="pairs">Pairs</option></select>
-      <select id="audio-format"><option value="mp3">MP3</option><option value="m4a">M4A</option></select>
-      <label class="check"><input type="checkbox" id="do-zip"> Zip output</label>
+      <label class="check"><input type="checkbox" id="do-zip" checked> Zip output</label>
       <button id="run-btn" onclick="runApp()">Run</button>
     </div>
     <div id="log"></div>
@@ -146,14 +160,35 @@
   <section>
     <h2>Language &amp; Voice</h2>
     <div class="form-grid">
-      <div class="field"><label>Base language code</label><input type="text" id="cfg-base-lang" placeholder="e.g. en-GB"></div>
-      <div class="field"><label>Base voice name</label><input type="text" id="cfg-base-voice" placeholder="e.g. en-GB-Standard-B"></div>
-      <div class="field"><label>Target language code</label><input type="text" id="cfg-target-lang" placeholder="e.g. da-DK"></div>
-      <div class="field"><label>Target voice name</label><input type="text" id="cfg-target-voice" placeholder="e.g. da-DK-Neural2-D"></div>
+      <div class="field">
+        <label>Base language code</label>
+        <div class="row">
+          <input type="text" id="cfg-base-lang" placeholder="e.g. en-GB" style="width:130px">
+          <button class="sm ghost" onclick="loadVoices('base')">Load voices</button>
+        </div>
+      </div>
+      <div class="field">
+        <label>Base voice</label>
+        <select id="cfg-base-voice-select" style="display:none;width:100%"></select>
+        <input type="text" id="cfg-base-voice" placeholder="e.g. en-GB-Standard-B">
+      </div>
+      <div class="field">
+        <label>Target language code</label>
+        <div class="row">
+          <input type="text" id="cfg-target-lang" placeholder="e.g. da-DK" style="width:130px">
+          <button class="sm ghost" onclick="loadVoices('target')">Load voices</button>
+        </div>
+      </div>
+      <div class="field">
+        <label>Target voice</label>
+        <select id="cfg-target-voice-select" style="display:none;width:100%"></select>
+        <input type="text" id="cfg-target-voice" placeholder="e.g. da-DK-Neural2-D">
+      </div>
     </div>
     <div class="row">
       <button onclick="saveConfig()">Save</button>
       <span class="save-msg" id="save-msg-cfg">Saved ✓</span>
+      <a href="https://cloud.google.com/text-to-speech#demo" target="_blank" rel="noopener" style="font-size:.85rem;margin-left:.5rem">Try voices →</a>
     </div>
   </section>
 
@@ -204,6 +239,9 @@
 </div>
 
 <script>
+// ── Profile state ────────────────────────────────────────────────────────────
+let _profile = '';
+
 // ── Tab navigation ───────────────────────────────────────────────────────────
 function showTab(name, btn) {
   ['simple','downloads','settings'].forEach(t =>
@@ -215,7 +253,60 @@ function showTab(name, btn) {
 }
 
 async function api(url, opts = {}) {
+  if (_profile) {
+    const sep = url.includes('?') ? '&' : '?';
+    url = `${url}${sep}profile=${encodeURIComponent(_profile)}`;
+  }
   return fetch(url, { credentials: 'same-origin', ...opts });
+}
+
+// ── Profiles ─────────────────────────────────────────────────────────────────
+async function loadProfiles(selectName) {
+  const res = await fetch('/profiles', { credentials: 'same-origin' });
+  const { profiles } = await res.json();
+  const sel = document.getElementById('profile-select');
+  const noMsg = document.getElementById('no-profiles-msg');
+  const tabs = document.querySelector('.tabs');
+
+  sel.innerHTML = profiles.map(p => `<option value="${p}">${p}</option>`).join('');
+  const hasProfiles = profiles.length > 0;
+  noMsg.style.display = hasProfiles ? 'none' : '';
+  tabs.style.display = hasProfiles ? '' : 'none';
+
+  if (hasProfiles) {
+    const pick = selectName && profiles.includes(selectName) ? selectName : profiles[0];
+    sel.value = pick;
+    switchProfile(pick);
+  } else {
+    _profile = '';
+  }
+}
+
+function switchProfile(name) {
+  _profile = name;
+  loadStatus();
+  checkLatest();
+  // Refresh whichever tab is active
+  const active = document.querySelector('.tab.active')?.textContent.trim().toLowerCase();
+  if (active === 'downloads') loadFiles();
+  if (active === 'settings')  { loadConfig(); loadTemplates(); }
+}
+
+async function promptNewProfile() {
+  const name = prompt('Profile name (letters, numbers, hyphens, underscores):');
+  if (!name) return;
+  const fd = new FormData(); fd.append('name', name.trim());
+  const res = await fetch('/profiles', { method: 'POST', body: fd, credentials: 'same-origin' });
+  if (!res.ok) { alert((await res.json()).detail || 'Could not create profile.'); return; }
+  loadProfiles(name.trim());
+}
+
+async function promptDeleteProfile() {
+  if (!_profile) return;
+  if (!confirm(`Delete profile "${_profile}" and ALL its data?\n\nThis cannot be undone.`)) return;
+  const fd = new FormData(); fd.append('name', _profile);
+  await fetch('/profiles/delete', { method: 'POST', body: fd, credentials: 'same-origin' });
+  loadProfiles();
 }
 
 // ── CSV ──────────────────────────────────────────────────────────────────────
@@ -242,11 +333,10 @@ async function runApp() {
   const log = document.getElementById('log');
   btn.disabled = true; log.textContent = '';
   const fd = new FormData();
-  fd.append('mode',         document.getElementById('run-mode').value);
-  fd.append('audio_format', document.getElementById('audio-format').value);
-  fd.append('do_zip',       document.getElementById('do-zip').checked ? 'true' : 'false');
+  fd.append('mode',   'sr');
+  fd.append('do_zip', document.getElementById('do-zip').checked ? 'true' : 'false');
   try {
-    const res = await fetch('/run', { method: 'POST', body: fd, credentials: 'same-origin' });
+    const res = await api('/run', { method: 'POST', body: fd });
     if (res.status === 409) { log.textContent = '⚠️ A run is already in progress.'; return; }
     if (!res.ok) { log.textContent = `❌ Server error ${res.status}`; return; }
     const reader = res.body.getReader(); const decoder = new TextDecoder();
@@ -315,22 +405,55 @@ async function loadFiles() {
 }
 
 // ── Language/voice config ────────────────────────────────────────────────────
+function _getVoiceValue(which) {
+  const sel = document.getElementById(`cfg-${which}-voice-select`);
+  return sel.style.display !== 'none' ? sel.value : document.getElementById(`cfg-${which}-voice`).value.trim();
+}
+
+function _setVoiceValue(which, value) {
+  const sel = document.getElementById(`cfg-${which}-voice-select`);
+  const txt = document.getElementById(`cfg-${which}-voice`);
+  if (sel.style.display !== 'none') {
+    // Try to select the saved value; fall back to text input if not in list
+    const opt = [...sel.options].find(o => o.value === value);
+    if (opt) { sel.value = value; return; }
+    sel.style.display = 'none'; txt.style.display = '';
+  }
+  txt.value = value || '';
+}
+
+async function loadVoices(which) {
+  const lang = document.getElementById(`cfg-${which}-lang`).value.trim();
+  if (!lang) { alert('Enter a language code first.'); return; }
+  const currentVoice = _getVoiceValue(which);
+  try {
+    const res = await api(`/voices?lang=${encodeURIComponent(lang)}`);
+    if (!res.ok) { const d = await res.json(); alert(d.detail || 'Could not load voices.'); return; }
+    const { voices } = await res.json();
+    const sel = document.getElementById(`cfg-${which}-voice-select`);
+    const txt = document.getElementById(`cfg-${which}-voice`);
+    sel.innerHTML = voices.map(v => `<option value="${v}">${v}</option>`).join('');
+    sel.value = voices.includes(currentVoice) ? currentVoice : voices[0];
+    sel.style.display = ''; txt.style.display = 'none';
+  } catch (e) { alert(`Failed to load voices: ${e.message}`); }
+}
+
 async function loadConfig() {
   try {
     const cfg = await (await api('/config')).json();
-    document.getElementById('cfg-base-lang').value    = cfg.base_lang    || '';
-    document.getElementById('cfg-base-voice').value   = cfg.base_voice   || '';
-    document.getElementById('cfg-target-lang').value  = cfg.target_lang  || '';
-    document.getElementById('cfg-target-voice').value = cfg.target_voice || '';
+    document.getElementById('cfg-base-lang').value   = cfg.base_lang   || '';
+    document.getElementById('cfg-target-lang').value = cfg.target_lang || '';
+    _setVoiceValue('base',   cfg.base_voice   || '');
+    _setVoiceValue('target', cfg.target_voice || '');
   } catch {}
 }
 
 async function saveConfig() {
   const fd = new FormData();
   fd.append('base_lang',    document.getElementById('cfg-base-lang').value.trim());
-  fd.append('base_voice',   document.getElementById('cfg-base-voice').value.trim());
+  fd.append('base_voice',   _getVoiceValue('base'));
   fd.append('target_lang',  document.getElementById('cfg-target-lang').value.trim());
-  fd.append('target_voice', document.getElementById('cfg-target-voice').value.trim());
+  fd.append('target_voice', _getVoiceValue('target'));
   await api('/config', { method: 'POST', body: fd });
   flash('save-msg-cfg');
 }
@@ -463,8 +586,10 @@ function flash(id) {
 }
 
 // ── Init ─────────────────────────────────────────────────────────────────────
-checkLatest();
-loadStatus();
+fetch('/me', { credentials: 'same-origin' })
+  .then(r => r.json())
+  .then(({ username }) => document.getElementById('username-display').textContent = username);
+loadProfiles();
 </script>
 </body>
 </html>
