@@ -1,6 +1,7 @@
 import io
 import json
 import queue
+from datetime import date
 import re
 import shutil
 import tempfile
@@ -414,7 +415,7 @@ def download_latest(profile: str = Query(...), username: str = Depends(_get_user
     if not zip_path.exists():
         raise HTTPException(404, "No recent run found")
     return FileResponse(zip_path, media_type="application/zip",
-                        headers={"Content-Disposition": f"attachment; filename={username}_{profile}_latest.zip"})
+                        headers={"Content-Disposition": f"attachment; filename={username}_{profile}_{date.today()}.zip"})
 
 
 @app.get("/download/all")
