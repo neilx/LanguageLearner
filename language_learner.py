@@ -104,30 +104,30 @@ class Config:
     BASE_VOICE_NAME: str = 'en-GB-Standard-B'
 
     MACRO_REPETITION_INTERVALS: List[int] = [1, 3, 7, 14, 30, 60, 120, 240]
-    TEMPLATES: Dict[str, Tuple[str, int, float, str]] = {
+    TEMPLATES: Dict[str, Tuple[str, float, str]] = {
         # -------------------
         # TODAY (active learning)
         # -------------------
-        "today":       ("L1 1.0s L2",          1, 0.7, "audio"),
-        "today_r":     ("L2 1.0s L1",          1, 0.7, "audio"),
+        "today":       ("L1 1.0s L2",          0.7, "audio"),
+        "today_r":     ("L2 1.0s L1",          0.7, "audio"),
 
         # FLOW (passive repetition of today)
-        "today_flow":   ("L1 1.5s L2 L2 L2 L2", 1, 0.7, "audio"),
-        "today_flow_r": ("L2 1.5s L1 L2 L2 L2", 1, 0.7, "audio"),
+        "today_flow":   ("L1 1.5s L2 L2 L2 L2", 0.7, "audio"),
+        "today_flow_r": ("L2 1.5s L1 L2 L2 L2", 0.7, "audio"),
 
         # -------------------
         # REVIEW (CSV-based spaced repetition)
         # -------------------
-        "review":       ("L1 1.0s L2",          1, 1.0, "audio"),
-        "review_r":     ("L2 1.0s L1",          1, 1.0, "audio"),
+        "review":       ("L1 1.0s L2",          1.0, "audio"),
+        "review_r":     ("L2 1.0s L1",          1.0, "audio"),
 
-        "review_flow":   ("L1 1.0s L2 L2 L2 L2", 1, 1.0, "audio"),
-        "review_flow_r": ("L2 1.0s L1 L2 L2 L2", 1, 1.0, "audio"),
+        "review_flow":   ("L1 1.0s L2 L2 L2 L2", 1.0, "audio"),
+        "review_flow_r": ("L2 1.0s L1 L2 L2 L2", 1.0, "audio"),
 
         # -------------------
         # VOCAB (CSV source only)
         # -------------------
-        "review":        ("L1 L2",               1, 1.0, "csv"),
+        "vocab":        ("L1 L2",               1.0, "csv"),
     }
     TEMPLATE_DELIMITER: str = ' '
     CONTENT_PAUSE_BUFFER_SEC: float = 0.3
@@ -137,7 +137,7 @@ class Config:
     @staticmethod
     def get_content_keys() -> List[str]:
         all_segments: Set[str] = set()
-        for pattern, _, _, _ in Config.TEMPLATES.values():
+        for pattern, _, _ in Config.TEMPLATES.values():
             all_segments.update(pattern.split(Config.TEMPLATE_DELIMITER))
         return sorted([k for k in all_segments if k and not _is_pause_token(k)])
 
@@ -202,10 +202,10 @@ def pre_cache_day_segments(full_schedule: List[ScheduleItem], use_real_tts_mode:
     cache_hits, api_calls = [0], [0]
     tts_func = real_google_cloud_api if use_real_tts_mode else mock_google_tts
     unique_requests: Set[Tuple[str, str, str, float]] = set()
-    required_speeds = set(speed for _, _, speed, ot in Config.TEMPLATES.values() if ot == 'audio')
+    required_speeds = set(speed for _, speed, ot in Config.TEMPLATES.values() if ot == 'audio')
 
     audio_keys: Set[str] = set(
-        k for _, (pattern, _, _, ot) in Config.TEMPLATES.items()
+        k for _, (pattern, _, ot) in Config.TEMPLATES.items()
         if ot == 'audio'
         for k in pattern.split(Config.TEMPLATE_DELIMITER)
         if k and not _is_pause_token(k)
@@ -291,7 +291,7 @@ def process_day(day: int, full_schedule: List[ScheduleItem], use_tts: bool, use_
     day_path.mkdir(parents=True, exist_ok=True)
 
     missing = []
-    for name, (_, _, speed, ot) in Config.TEMPLATES.items():
+    for name, (_, speed, ot) in Config.TEMPLATES.items():
         ext = 'csv' if ot == 'csv' else 'mp3'
         if (day_path / f"{padded_day}_{name}.{ext}").exists():
             continue
@@ -316,7 +316,7 @@ def process_day(day: int, full_schedule: List[ScheduleItem], use_tts: bool, use_
     shuffled_review = random.Random(day).sample(review_items, len(review_items))
 
     day_total_duration = 0.0
-    for name, (pattern, _, speed, output_type) in Config.TEMPLATES.items():
+    for name, (pattern, speed, output_type) in Config.TEMPLATES.items():
         ext = 'csv' if output_type == 'csv' else 'mp3'
         output_file = day_path / f"{padded_day}_{name}.{ext}"
         if output_file.exists():
@@ -385,7 +385,7 @@ def generate_full_repetition_schedule(master: List[ScheduleItem], max_day: int) 
 def is_day_complete(day: int) -> bool:
     padded_day = str(day).zfill(3)
     path = Config.OUTPUT_ROOT_DIR / f"day_{padded_day}"
-    for name, (_, _, _, output_type) in Config.TEMPLATES.items():
+    for name, (_, _, output_type) in Config.TEMPLATES.items():
         ext = 'csv' if output_type == 'csv' else 'mp3'
         if not (path / f"{padded_day}_{name}.{ext}").exists():
             return False
@@ -430,7 +430,7 @@ def sentence_pairs_workflow(run_config: RunConfig, use_tts: bool, use_concat: bo
             f"Available: {', '.join(Config.TEMPLATES.keys())}"
         )
 
-    pattern, _, speed, _ = Config.TEMPLATES[run_config.template]
+    pattern, speed, _ = Config.TEMPLATES[run_config.template]
     Config.OUTPUT_ROOT_DIR.mkdir(parents=True, exist_ok=True)
 
     _log(f"--- 🎧 Sentence Pairs Mode ---")

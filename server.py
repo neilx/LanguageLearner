@@ -88,13 +88,12 @@ def _parse_day_spec(spec: str) -> list[int]:
 
 def _merged_templates(user_templates: dict) -> dict:
     merged = {}
-    for name, (pattern, reps, speed, output_type) in ll.Config.TEMPLATES.items():
+    for name, (pattern, speed, output_type) in ll.Config.TEMPLATES.items():
         override = user_templates.get(name, {})
         if override.get("disabled"):
             continue
         merged[name] = (
             override.get("pattern", pattern),
-            override.get("reps", reps),
             override.get("speed", speed),
             override.get("output_type", output_type),
         )
@@ -102,7 +101,6 @@ def _merged_templates(user_templates: dict) -> dict:
         if name not in ll.Config.TEMPLATES and not tdata.get("disabled"):
             merged[name] = (
                 tdata["pattern"],
-                tdata.get("reps", 1),
                 tdata.get("speed", 1.0),
                 tdata.get("output_type", "audio"),
             )
@@ -231,12 +229,11 @@ def save_config(
 def get_templates(profile: str = Query(...), username: str = Depends(_get_user)):
     user_templates = _load_profile_config(username, profile).get("templates", {})
     result = []
-    for name, (pattern, reps, speed, output_type) in ll.Config.TEMPLATES.items():
+    for name, (pattern, speed, output_type) in ll.Config.TEMPLATES.items():
         override = user_templates.get(name, {})
         result.append({
             "name":        name,
             "pattern":     override.get("pattern",     pattern),
-            "reps":        override.get("reps",        reps),
             "speed":       override.get("speed",       speed),
             "output_type": override.get("output_type", output_type),
             "is_default":  True,
@@ -248,7 +245,6 @@ def get_templates(profile: str = Query(...), username: str = Depends(_get_user))
             result.append({
                 "name":        name,
                 "pattern":     tdata.get("pattern", ""),
-                "reps":        tdata.get("reps", 1),
                 "speed":       tdata.get("speed", 1.0),
                 "output_type": tdata.get("output_type", "audio"),
                 "is_default":  False,
@@ -263,7 +259,6 @@ def save_template(
     profile: str = Query(...),
     name: str = Form(...),
     pattern: str = Form(...),
-    reps: int = Form(...),
     speed: float = Form(...),
     output_type: str = Form(...),
     username: str = Depends(_get_user),
@@ -273,7 +268,7 @@ def save_template(
     cfg = _load_profile_config(username, profile)
     templates = cfg.setdefault("templates", {})
     existing = templates.get(name, {})
-    existing.update({"pattern": pattern, "reps": reps, "speed": speed, "output_type": output_type})
+    existing.update({"pattern": pattern, "speed": speed, "output_type": output_type})
     existing.pop("disabled", None)
     templates[name] = existing
     _save_profile_config(username, profile, cfg)

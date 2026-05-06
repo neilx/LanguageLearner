@@ -9,10 +9,9 @@ python language_learner.py                        # default SR mode (spaced repe
 python language_learner.py --mock                 # logic-only, no real API calls
 python language_learner.py --mode pairs --template workout_forward_transcribe!
 python language_learner.py --zip                  # package output into a zip archive
-python language_learner.py --format m4a           # output m4a instead of mp3
 ```
 
-All CLI flags: `--source`, `--output`, `--base-lang`, `--base-voice`, `--target-lang`, `--target-voice`, `--format`, `--zip`, `--template`, `--mock`.
+All CLI flags: `--source`, `--output`, `--base-lang`, `--base-voice`, `--target-lang`, `--target-voice`, `--zip`, `--template`, `--mock`.
 
 ## Dependencies
 
@@ -29,16 +28,16 @@ Everything lives in `language_learner.py`. There are no other modules.
 Single source of truth for all configuration. Key fields:
 
 - `SOURCE_FILE` / `OUTPUT_ROOT_DIR` — both live under `iCloudDrive/LanguageLearnerData/`; TTS cache stays local in `tts_cache/`
-- `TEMPLATES` — dict of `name → (pattern, reps, speed, output_type)`
+- `TEMPLATES` — dict of `name → (pattern, speed, output_type)`
 - `MACRO_REPETITION_INTERVALS` — across-day review schedule `[1, 3, 7, 14, 30, 60, 120, 240]`
 
 ### Template system
 
-Each template entry is `(pattern, reps, speed, output_type)`:
+Each template entry is `(pattern, speed, output_type)`:
 
-- **pattern**: space-delimited tokens. `L1`/`L2` = content segments; `Xs` (e.g. `1.0s`) = silent pause
+- **pattern**: space-delimited tokens. `L1`/`L2` = content segments; `Xs` (e.g. `1.0s`) = silent pause. Repetition is controlled by repeating tokens (e.g., `L2 L2 L2 L2` = four L2s)
 - **speed**: `!= 1.0` → workout template consuming **NEW** items; `== 1.0` → review template consuming **REVIEW** items
-- **output_type**: `'audio'` generates an MP3/M4A; `'csv'` generates a CSV — CSVs are never produced automatically, they require an explicit template entry
+- **output_type**: `'audio'` generates an MP3; `'csv'` generates a CSV — CSVs are never produced automatically, they require an explicit template entry
 
 CSV templates always receive `shuffled_review` (the same randomly-ordered list used by all review audio templates for that day), ensuring the printed list matches what the user hears.
 
