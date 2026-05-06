@@ -127,7 +127,7 @@ class Config:
         # -------------------
         # VOCAB (CSV source only)
         # -------------------
-        "vocab":        ("L1 L2",               1.0, "csv"),
+        "review_order": ("L1 L2",               1.0, "csv"),
     }
     TEMPLATE_DELIMITER: str = ' '
     CONTENT_PAUSE_BUFFER_SEC: float = 0.3

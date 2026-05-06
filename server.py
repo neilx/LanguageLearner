@@ -414,7 +414,7 @@ def download_latest(profile: str = Query(...), username: str = Depends(_get_user
     if not zip_path.exists():
         raise HTTPException(404, "No recent run found")
     return FileResponse(zip_path, media_type="application/zip",
-                        headers={"Content-Disposition": "attachment; filename=latest_run.zip"})
+                        headers={"Content-Disposition": f"attachment; filename={username}_{profile}_latest.zip"})
 
 
 @app.get("/download/all")
@@ -433,9 +433,11 @@ def download_all(
     with zipfile.ZipFile(tmp_path, "w", zipfile.ZIP_STORED) as zf:
         for f in files:
             zf.write(f, f.relative_to(output))
+    days = sorted(set(f.parent.name for f in files if f.parent.name.startswith("day_")))
+    day_range = f"_days{days[0].split('_')[1]}-{days[-1].split('_')[1]}" if days else ""
     background_tasks.add_task(tmp_path.unlink, missing_ok=True)
     return FileResponse(str(tmp_path), media_type="application/zip",
-                        headers={"Content-Disposition": f"attachment; filename={profile}_all.zip"})
+                        headers={"Content-Disposition": f"attachment; filename={username}_{profile}{day_range}.zip"})
 
 
 @app.post("/download/days")
@@ -463,7 +465,7 @@ def download_days(
     buf.seek(0)
     safe = spec.strip().replace(" ", "").replace(",", "_")
     return StreamingResponse(buf, media_type="application/zip",
-                             headers={"Content-Disposition": f"attachment; filename={profile}_days_{safe}.zip"})
+                             headers={"Content-Disposition": f"attachment; filename={username}_{profile}_days{safe}.zip"})
 
 
 # ── Day management ────────────────────────────────────────────────────────────

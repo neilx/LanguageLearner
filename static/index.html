@@ -362,14 +362,14 @@ async function checkLatest() {
   } catch {}
 }
 
-function downloadLatest() { window.location.href = '/download/latest'; }
-function downloadAll()    { window.location.href = '/download/all'; }
+function downloadLatest() { window.location.href = `/download/latest?profile=${encodeURIComponent(_profile)}`; }
+function downloadAll()    { window.location.href = `/download/all?profile=${encodeURIComponent(_profile)}`; }
 
 async function downloadDays() {
   const spec = document.getElementById('day-spec-dl').value.trim();
   if (!spec) { alert('Enter day numbers, e.g. 1-7, 9, 10'); return; }
   const fd = new FormData(); fd.append('spec', spec);
-  const res = await fetch('/download/days', { method: 'POST', body: fd, credentials: 'same-origin' });
+  const res = await api('/download/days', { method: 'POST', body: fd });
   if (!res.ok) { alert(((await res.json().catch(()=>({}))).detail) || 'No files found.'); return; }
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
